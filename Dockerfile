@@ -32,25 +32,16 @@ RUN apt-get update && \
             php8.4-mcrypt \
             php8.4-xml
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*; 
-
-
-
-
 # Separately install optional packages to have better cache utilization
 RUN if [ "$INSTALL_IMAGICK" = "true" ]; then \
-        apt-get update && \
-        apt-get install -y php8.4-imagick && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*; \
+        apt-get install -y php8.4-imagick \
     fi
-    
+
 RUN if [ "$INSTALL_PHPDBG" = "true" ]; then \
-        apt-get update && \
-        apt-get install -y php8.4-phpdbg && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*; \
+        apt-get install -y php8.4-phpdbg  \
     fi
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*; 
 
 # Create necessary directories
 RUN mkdir -p /var/www/html /run/nginx

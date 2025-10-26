@@ -18,8 +18,8 @@ jobs:
       matrix:
         version:
           - 24.04
-          - 25.04
-          - 25.10
+        #  - 25.04
+        #  - 25.10
           - latest
         variant:
           - ''
