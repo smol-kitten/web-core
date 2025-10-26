@@ -26,21 +26,61 @@ jobs:
           - ''
           - '-imagic'
           - '-dbg'
+          - '-imagic-dbg'
     steps:
       - uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Build Docker image
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set image metadata
+        id: meta
         run: |
-          IMAGE_TAG="nginx:${{ matrix.version }}${{ matrix.variant }}"
+          # Determine base image and build args
           if [ "${{ matrix.base }}" = "alpine" ]; then
-            IMAGE_TAG="nginx:alpine${{ matrix.variant }}"
-            docker build --build-arg BASE_IMAGE=alpine:latest -t $IMAGE_TAG .
+            BASE_IMAGE="alpine:latest"
+            IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/nginx:alpine${{ matrix.variant }}"
+            INSTALL_IMAGICK="false"
+            INSTALL_PHPDBG="false"
           else
-            docker build --build-arg BASE_IMAGE=ubuntu:${{ matrix.version }} -t $IMAGE_TAG .
+            BASE_IMAGE="ubuntu:${{ matrix.version }}"
+            IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${{ matrix.variant }}"
+            INSTALL_IMAGICK="true"
+            INSTALL_PHPDBG="true"
+              # Adjust build args based on variant
+            if [ "${{ matrix.variant }}" = "-imagic" ]; then
+                INSTALL_IMAGICK="true"
+                INSTALL_PHPDBG="false"
+            elif [ "${{ matrix.variant }}" = "-dbg" ]; then
+                INSTALL_IMAGICK="false"
+                INSTALL_PHPDBG="true"
+            elif [ "${{ matrix.variant }}" = "" ] && [ "${{ matrix.base }}" = "ubuntu" ]; then
+                INSTALL_IMAGICK="false"
+                INSTALL_PHPDBG="false"
+            elif [ "${{ matrix.variant }}" = "-imagic-dbg" ]; then
+                INSTALL_IMAGICK="true"
+                INSTALL_PHPDBG="true"
+            fi
           fi
-          echo "Built $IMAGE_TAG"
+                
+          echo "base_image=$BASE_IMAGE" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "install_imagick=$INSTALL_IMAGICK" >> $GITHUB_OUTPUT
+          echo "install_phpdbg=$INSTALL_PHPDBG" >> $GITHUB_OUTPUT
         shell: bash
-      # Optionally add steps to push images to a registry
+      
+      - name: Build and push Docker image
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE=${{ steps.meta.outputs.base_image }} \
+            --build-arg INSTALL_IMAGICK=${{ steps.meta.outputs.install_imagick }} \
+            --build-arg INSTALL_PHPDBG=${{ steps.meta.outputs.install_phpdbg }} \
+            -t ${{ steps.meta.outputs.image_tag }} \
+            .
+          docker push ${{ steps.meta.outputs.image_tag }}
+          echo "Built and pushed ${{ steps.meta.outputs.image_tag }}"
+        shell: bash
