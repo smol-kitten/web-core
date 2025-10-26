@@ -1,5 +1,5 @@
 # This workflow builds multiple Docker image variants for different OS versions and features
-# Adjusts tags for Ubuntu (24.04, 25.04, 25.10) and Alpine, with -imagic, -dbg, and base variants
+# Adjusts tags for Ubuntu (24.04, 25.04, 25.10) with -imagic, -dbg, and base variants
 
 name: Build Docker Images
 
@@ -16,9 +16,6 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix:
-        base:
-          - ubuntu
-          - alpine
         version:
           - 24.04
           - 25.04
@@ -45,31 +42,22 @@ jobs:
       - name: Set image metadata
         id: meta
         run: |
-          # Determine base image and build args
-          if [ "${{ matrix.base }}" = "alpine" ]; then
-            BASE_IMAGE="alpine:latest"
-            IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/nginx:alpine${{ matrix.variant }}"
+          BASE_IMAGE="ubuntu:${{ matrix.version }}"
+          IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${{ matrix.variant }}"
+          
+          # Adjust build args based on variant
+          if [ "${{ matrix.variant }}" = "-imagic" ]; then
+            INSTALL_IMAGICK="true"
+            INSTALL_PHPDBG="false"
+          elif [ "${{ matrix.variant }}" = "-dbg" ]; then
+            INSTALL_IMAGICK="false"
+            INSTALL_PHPDBG="true"
+          elif [ "${{ matrix.variant }}" = "" ]; then
             INSTALL_IMAGICK="false"
             INSTALL_PHPDBG="false"
-          else
-            BASE_IMAGE="ubuntu:${{ matrix.version }}"
-            IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${{ matrix.variant }}"
+          elif [ "${{ matrix.variant }}" = "-imagic-dbg" ]; then
             INSTALL_IMAGICK="true"
             INSTALL_PHPDBG="true"
-              # Adjust build args based on variant
-            if [ "${{ matrix.variant }}" = "-imagic" ]; then
-                INSTALL_IMAGICK="true"
-                INSTALL_PHPDBG="false"
-            elif [ "${{ matrix.variant }}" = "-dbg" ]; then
-                INSTALL_IMAGICK="false"
-                INSTALL_PHPDBG="true"
-            elif [ "${{ matrix.variant }}" = "" ] && [ "${{ matrix.base }}" = "ubuntu" ]; then
-                INSTALL_IMAGICK="false"
-                INSTALL_PHPDBG="false"
-            elif [ "${{ matrix.variant }}" = "-imagic-dbg" ]; then
-                INSTALL_IMAGICK="true"
-                INSTALL_PHPDBG="true"
-            fi
           fi
                 
           echo "base_image=$BASE_IMAGE" >> $GITHUB_OUTPUT
