@@ -163,3 +163,44 @@ jobs:
           rm -rf /tmp/.buildx-cache-variants
           mv /tmp/.buildx-cache-variants-new /tmp/.buildx-cache-variants
 
+  cleanup-untagged:
+    needs: build-variants
+    runs-on: self-hosted
+    steps:
+      - name: Delete untagged images from registry
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const packages = ['nginx', 'prep', 'prep_web'];
+            
+            for (const packageName of packages) {
+              try {
+                // Get all versions of the package
+                const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+                  package_type: 'container',
+                  package_name: packageName,
+                  username: context.repo.owner
+                });
+                
+                // Filter untagged versions (those with no tags)
+                const untaggedVersions = versions.data.filter(version => 
+                  version.metadata.container.tags.length === 0
+                );
+                
+                // Delete untagged versions
+                for (const version of untaggedVersions) {
+                  console.log(`Deleting untagged version ${version.id} of package ${packageName}`);
+                  await github.rest.packages.deletePackageVersionForUser({
+                    package_type: 'container',
+                    package_name: packageName,
+                    username: context.repo.owner,
+                    package_version_id: version.id
+                  });
+                }
+                
+                console.log(`Cleaned up ${untaggedVersions.length} untagged versions from ${packageName}`);
+              } catch (error) {
+                console.log(`Error cleaning up ${packageName}: ${error.message}`);
+              }
+            }
