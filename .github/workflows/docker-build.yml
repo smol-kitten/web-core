@@ -8,6 +8,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sundays at 02:00 UTC
 
 jobs:
   build:
@@ -29,6 +31,9 @@ jobs:
           - '-imagic-dbg'
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -74,13 +79,15 @@ jobs:
         shell: bash
       
       - name: Build and push Docker image
-        run: |
-          docker build \
-            --build-arg BASE_IMAGE=${{ steps.meta.outputs.base_image }} \
-            --build-arg INSTALL_IMAGICK=${{ steps.meta.outputs.install_imagick }} \
-            --build-arg INSTALL_PHPDBG=${{ steps.meta.outputs.install_phpdbg }} \
-            -t ${{ steps.meta.outputs.image_tag }} \
-            .
-          docker push ${{ steps.meta.outputs.image_tag }}
-          echo "Built and pushed ${{ steps.meta.outputs.image_tag }}"
-        shell: bash
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image_tag }}
+          build-args: |
+            BASE_IMAGE=${{ steps.meta.outputs.base_image }}
+            INSTALL_IMAGICK=${{ steps.meta.outputs.install_imagick }}
+            INSTALL_PHPDBG=${{ steps.meta.outputs.install_phpdbg }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
