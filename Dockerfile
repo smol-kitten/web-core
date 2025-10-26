@@ -5,11 +5,14 @@ FROM ${BASE_IMAGE}
 ARG INSTALL_IMAGICK=true
 ARG INSTALL_PHPDBG=true
 
-# Install packages based on OS type
+# Install packages
 RUN apt-get update && \
         apt-get install -y software-properties-common && \
-        LC_ALL=C.UTF-8 add-apt-repository ppa:ondrej/php -yy && \
-        apt-get update && \
+        LC_ALL=C.UTF-8 add-apt-repository ppa:ondrej/php -yy
+
+RUN apt-get upgrade -yy        
+
+RUN apt-get update && \
         apt-get install -y \
             nginx \
             php8.4 \
@@ -27,10 +30,12 @@ RUN apt-get update && \
             php8.4-cgi \
             php8.4-curl \
             php8.4-mcrypt \
-            php8.4-xml \
-        apt-get upgrade -yy && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*; 
+            php8.4-xml
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*; 
+
+
+
 
 # Separately install optional packages to have better cache utilization
 RUN if [ "$INSTALL_IMAGICK" = "true" ]; then \
@@ -39,6 +44,7 @@ RUN if [ "$INSTALL_IMAGICK" = "true" ]; then \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*; \
     fi
+    
 RUN if [ "$INSTALL_PHPDBG" = "true" ]; then \
         apt-get update && \
         apt-get install -y php8.4-phpdbg && \
