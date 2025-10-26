@@ -1,0 +1,29 @@
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
+
+# Detect OS type and set package manager
+ARG INSTALL_IMAGICK=true
+ARG INSTALL_PHPDBG=true
+
+# Separately install optional packages to have better cache utilization
+RUN if [ "$INSTALL_IMAGICK" = "true" ]; then \
+        apt-get install -y php8.4-imagick; \
+    fi
+
+RUN if [ "$INSTALL_PHPDBG" = "true" ]; then \
+        apt-get install -y php8.4-phpdbg; \
+    fi
+
+RUN if [ "$INSTALL_SQLITE" = "true" ]; then \
+        apt-get install -y php8.4-sqlite3; \
+    fi
+
+RUN if [ "$INSTALL_MYSQL" = "true" ]; then \
+        apt-get install -y php8.4-mysql; \
+    fi
+
+RUN if [ "$INSTALL_SSH2" = "true" ]; then \
+        apt-get install -y php8.4-ssh2; \
+    fi
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*;

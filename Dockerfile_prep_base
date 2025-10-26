@@ -1,0 +1,8 @@
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
+
+# Install packages
+RUN apt-get update && \
+        apt-get install -y software-properties-common        
+
+RUN apt-get upgrade -yy
