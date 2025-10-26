@@ -1,0 +1,11 @@
+services:
+  webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webserver
+    restart: always
+    healthcheck:
+      test: "ss --listening --tcp | grep -P 'LISTEN.+:3000' || exit 1"
+      timeout: 3s
+      retries: 0
