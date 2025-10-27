@@ -1,18 +1,26 @@
-ARG BASE_IMAGE=ubuntu:24.04
+ARG BASE_IMAGE=prep_nginx:24.04
 FROM ${BASE_IMAGE}
 
-# Detect OS type and set package manager
+# NOTE: Imagick is now installed in prep_nginx_imagick and prep_apache2_imagick
+# If INSTALL_IMAGICK=true, the workflow uses those prep images as BASE_IMAGE
+# This avoids 10+ minute PECL compilation for every variant
+
+# Build args for optional extensions
 ARG INSTALL_IMAGICK=true
-ARG INSTALL_PHPDBG=true
+ARG INSTALL_SQLITE=false
+ARG INSTALL_MYSQL=false
+ARG INSTALL_SSH2=false
 
-# Separately install optional packages to have better cache utilization
-RUN if [ "$INSTALL_IMAGICK" = "true" ]; then \
-        apt-get install -y php8.4-imagick; \
-    fi
+# Note: phpdbg is not yet available in Ondřej's PPA for PHP 8.4
+# It has been removed from the build matrix
 
-RUN if [ "$INSTALL_PHPDBG" = "true" ]; then \
-        apt-get install -y php8.4-phpdbg; \
-    fi
+# Add Debian sid repository for additional PHP packages (like php8.4-sqlite3)
+# Import GPG keys first to avoid verification errors
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gnupg && \
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 6ED0E7B82643E131 78DBA3BC47EF2265 && \
+    echo "deb http://ftp.de.debian.org/debian sid main" >> /etc/apt/sources.list && apt-get update
+    
 
 RUN if [ "$INSTALL_SQLITE" = "true" ]; then \
         apt-get install -y php8.4-sqlite3; \
@@ -26,4 +34,4 @@ RUN if [ "$INSTALL_SSH2" = "true" ]; then \
         apt-get install -y php8.4-ssh2; \
     fi
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*;
+RUN apt-get purge -y gnupg && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*

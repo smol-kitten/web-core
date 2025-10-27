@@ -1,12 +1,10 @@
 # This workflow builds multiple Docker image variants for different OS versions and features
-# Multi-stage build: prep_base → prep_web → specific variants with imagick/phpdbg permutations
+# Multi-stage build: prep_base → prep_nginx/prep_apache2 → specific variants with imagick/phpdbg permutations
 
 name: Build Docker Images
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
   schedule:
     - cron: '0 2 * * 0'  # Weekly on Sundays at 02:00 UTC
@@ -38,18 +36,13 @@ jobs:
           context: .
           file: ./Dockerfile_prep_base
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/prep:${{ matrix.version }}
+          tags: ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
           build-args: |
             BASE_IMAGE=ubuntu:${{ matrix.version }}
-          cache-from: type=local,src=/tmp/.buildx-cache-prep-base
-          cache-to: type=local,dest=/tmp/.buildx-cache-prep-base-new,mode=max
-      
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache-prep-base
-          mv /tmp/.buildx-cache-prep-base-new /tmp/.buildx-cache-prep-base
+          cache-from: type=local,src=/home/runner/.cache/buildx/prep-base
+          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
-  build-prep-web:
+  build-prep-nginx:
     needs: build-prep-base
     runs-on: self-hosted
     strategy:
@@ -70,35 +63,129 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build and push prep_web image
+      - name: Build and push prep_nginx image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile_prep_web
+          file: ./Dockerfile_prep_nginx
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/prep_web:${{ matrix.version }}
+          tags: ghcr.io/${{ github.repository_owner }}/prep_nginx:${{ matrix.version }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep:${{ matrix.version }}
-          cache-from: type=local,src=/tmp/.buildx-cache-prep-web
-          cache-to: type=local,dest=/tmp/.buildx-cache-prep-web-new,mode=max
-      
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache-prep-web
-          mv /tmp/.buildx-cache-prep-web-new /tmp/.buildx-cache-prep-web
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/prep-nginx
+          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-nginx,mode=max
 
-  build-variants:
-    needs: build-prep-web
+  build-prep-apache:
+    needs: build-prep-base
     runs-on: self-hosted
     strategy:
       matrix:
         version:
           - 24.04
           - latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push prep_apache2 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_apache2
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/prep_apache2:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/prep-apache
+          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-apache,mode=max
+
+  build-prep-nginx-imagick:
+    needs: build-prep-nginx
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        version:
+          - 24.04
+          - latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push prep_nginx_imagick image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_nginx_imagick
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/prep_nginx_imagick:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_nginx:${{ matrix.version }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/prep-nginx-imagick
+          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-nginx-imagick,mode=max
+
+  build-prep-apache-imagick:
+    needs: [build-prep-apache, build-prep-nginx-imagick]
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        version:
+          - 24.04
+          - latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push prep_apache2_imagick image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_apache2_imagick
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/prep_apache2_imagick:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_apache2:${{ matrix.version }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/prep-apache-imagick
+          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-apache-imagick,mode=max
+
+  build-variants:
+    needs: [build-prep-nginx-imagick, build-prep-apache-imagick]
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        server:
+          - nginx
+          - apache2
+        version:
+          - 24.04
+          - latest
         imagick:
-          - true
-          - false
-        phpdbg:
           - true
           - false
         sqlite:
@@ -126,19 +213,37 @@ jobs:
       - name: Set image metadata
         id: meta
         run: |
+          # Build variant suffix from all extensions
           VARIANT=""
-          if [ "${{ matrix.imagick }}" = "true" ] && [ "${{ matrix.phpdbg }}" = "true" ]; then
-            VARIANT="-imagick-phpdbg"
-          elif [ "${{ matrix.imagick }}" = "true" ]; then
-            VARIANT="-imagick"
-          elif [ "${{ matrix.phpdbg }}" = "true" ]; then
-            VARIANT="-phpdbg"
+          PARTS=""
+          
+          [ "${{ matrix.imagick }}" = "true" ] && PARTS="${PARTS}-imagick"
+          [ "${{ matrix.sqlite }}" = "true" ] && PARTS="${PARTS}-sqlite"
+          [ "${{ matrix.mysql }}" = "true" ] && PARTS="${PARTS}-mysql"
+          [ "${{ matrix.ssh2 }}" = "true" ] && PARTS="${PARTS}-ssh2"
+          
+          VARIANT="${PARTS}"
+          
+          # Determine base image based on server type and imagick requirement
+          if [ "${{ matrix.server }}" = "apache2" ]; then
+            if [ "${{ matrix.imagick }}" = "true" ]; then
+              BASE_PREP="prep_apache2_imagick"
+            else
+              BASE_PREP="prep_apache2"
+            fi
+          else
+            if [ "${{ matrix.imagick }}" = "true" ]; then
+              BASE_PREP="prep_nginx_imagick"
+            else
+              BASE_PREP="prep_nginx"
+            fi
           fi
           
-          IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${VARIANT}"
+          IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "variant=$VARIANT" >> $GITHUB_OUTPUT
+          echo "base_prep=$BASE_PREP" >> $GITHUB_OUTPUT
         shell: bash
       
       - name: Build and push variant image
@@ -149,19 +254,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_web:${{ matrix.version }}
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
-            INSTALL_PHPDBG=${{ matrix.phpdbg }}
             INSTALL_SQLITE=${{ matrix.sqlite }}
             INSTALL_MYSQL=${{ matrix.mysql }}
             INSTALL_SSH2=${{ matrix.ssh2 }}            
-          cache-from: type=local,src=/tmp/.buildx-cache-variants
-          cache-to: type=local,dest=/tmp/.buildx-cache-variants-new,mode=max
-      
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache-variants
-          mv /tmp/.buildx-cache-variants-new /tmp/.buildx-cache-variants
+          cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
 
   cleanup-untagged:
     needs: build-variants
@@ -172,7 +270,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const packages = ['nginx', 'prep', 'prep_web'];
+            const packages = ['nginx', 'apache2', 'prep_base', 'prep_nginx', 'prep_apache2', 'prep_nginx_imagick', 'prep_apache2_imagick'];
             
             for (const packageName of packages) {
               try {
@@ -183,14 +281,17 @@ jobs:
                   username: context.repo.owner
                 });
                 
-                // Filter untagged versions (those with no tags)
-                const untaggedVersions = versions.data.filter(version => 
-                  version.metadata.container.tags.length === 0
-                );
+                // Filter versions that are ONLY tagged with SHA (no semantic tags)
+                const shaOnlyVersions = versions.data.filter(version => {
+                  const tags = version.metadata.container.tags;
+                  if (tags.length === 0) return true; // No tags at all
+                  // Check if all tags are SHA256 hashes (start with sha256:)
+                  return tags.every(tag => tag.startsWith('sha256:'));
+                });
                 
-                // Delete untagged versions
-                for (const version of untaggedVersions) {
-                  console.log(`Deleting untagged version ${version.id} of package ${packageName}`);
+                // Delete SHA-only versions
+                for (const version of shaOnlyVersions) {
+                  console.log(`Deleting SHA-only version ${version.id} of package ${packageName} (tags: ${version.metadata.container.tags.join(', ')})`);
                   await github.rest.packages.deletePackageVersionForUser({
                     package_type: 'container',
                     package_name: packageName,
@@ -199,7 +300,7 @@ jobs:
                   });
                 }
                 
-                console.log(`Cleaned up ${untaggedVersions.length} untagged versions from ${packageName}`);
+                console.log(`Cleaned up ${shaOnlyVersions.length} SHA-only versions from ${packageName}`);
               } catch (error) {
                 console.log(`Error cleaning up ${packageName}: ${error.message}`);
               }

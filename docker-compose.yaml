@@ -1,11 +1,106 @@
 services:
-  webserver:
+  # Base images need to be built first
+  prep-base:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: webserver
+      dockerfile: Dockerfile_prep_base
+      args:
+        BASE_IMAGE: ubuntu:24.04
+    image: prep_base:24.04
+    container_name: prep-base
+    command: /bin/true
+    profiles: ["build"]
+
+  prep-nginx-base:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx
+      args:
+        BASE_IMAGE: prep_base:24.04
+    image: prep_nginx:24.04
+    container_name: prep-nginx-base
+    command: /bin/true
+    profiles: ["build"]
+    depends_on:
+      - prep-base
+
+  prep-apache-base:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2
+      args:
+        BASE_IMAGE: prep_base:24.04
+    image: prep_apache2:24.04
+    container_name: prep-apache-base
+    command: /bin/true
+    profiles: ["build"]
+    depends_on:
+      - prep-base
+
+  prep-nginx-imagick:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx_imagick
+      args:
+        BASE_IMAGE: prep_nginx:24.04
+    image: prep_nginx_imagick:24.04
+    container_name: prep-nginx-imagick
+    command: /bin/true
+    profiles: ["build"]
+    depends_on:
+      - prep-nginx-base
+
+  prep-apache-imagick:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2_imagick
+      args:
+        BASE_IMAGE: prep_apache2:24.04
+    image: prep_apache2_imagick:24.04
+    container_name: prep-apache-imagick
+    command: /bin/true
+    profiles: ["build"]
+    depends_on:
+      - prep-apache-base
+
+  nginx:
+    environment:
+      - QUICK_SET=API
+      - WEB_PORT=1234
+      - EXPOSE_SERVER_SOFTWARE=false
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx
+      args:
+        BASE_IMAGE: prep_base:24.04
+    image: prep_nginx:24.04
+    container_name: web_nginx
+    # index.php is preloaded at build time
+    ports:
+      - "8080:1234"
     restart: always
     healthcheck:
-      test: "ss --listening --tcp | grep -P 'LISTEN.+:3000' || exit 1"
+      test: ["CMD-SHELL", "ss -ltn | grep -P ':1234' || exit 1"]
+      interval: 30s
       timeout: 3s
-      retries: 0
+      retries: 3
+
+  apache:
+    environment:
+      - QUICK_SET=CMS
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2
+      args:
+        BASE_IMAGE: prep_base:24.04
+    image: prep_apache2:24.04
+    container_name: web_apache
+    # index.php is preloaded at build time
+    ports:
+      - "8081:80"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -P ':80' || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
