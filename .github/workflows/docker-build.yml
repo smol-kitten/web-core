@@ -31,6 +31,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
+      - name: Ensure buildx cache directories
+        run: |
+          # Create all cache directories used by this workflow and make them writable
+          sudo mkdir -p /home/runner/.cache/buildx/{prep-base,prep-nginx,prep-apache,prep-nginx-imagick,prep-apache-imagick,variants-nginx,variants-apache2}
+          # Make writable by all to avoid permission issues when buildkit writes cache blobs
+          sudo chmod -R 0777 /home/runner/.cache/buildx || true
+      
       - name: Build and push prep base image
         uses: docker/build-push-action@v5
         with:
