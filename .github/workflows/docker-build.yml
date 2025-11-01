@@ -16,7 +16,8 @@ jobs:
       matrix:
         version:
           - 24.04
-          - latest
+          - 25.04
+          - 25.10
     steps:
       - uses: actions/checkout@v4
       
@@ -49,7 +50,8 @@ jobs:
       matrix:
         version:
           - 24.04
-          - latest
+          - 25.04
+          - 25.10
     steps:
       - uses: actions/checkout@v4
       
@@ -82,7 +84,8 @@ jobs:
       matrix:
         version:
           - 24.04
-          - latest
+          - 25.04
+          - 25.10
     steps:
       - uses: actions/checkout@v4
       
@@ -115,7 +118,8 @@ jobs:
       matrix:
         version:
           - 24.04
-          - latest
+          - 25.04
+          - 25.10
     steps:
       - uses: actions/checkout@v4
       
@@ -148,7 +152,8 @@ jobs:
       matrix:
         version:
           - 24.04
-          - latest
+          - 25.04
+          - 25.10
     steps:
       - uses: actions/checkout@v4
       
@@ -184,7 +189,8 @@ jobs:
           - apache2
         version:
           - 24.04
-          - latest
+          - 25.04
+          - 25.10
         imagick:
           - true
           - false
@@ -261,47 +267,47 @@ jobs:
             INSTALL_SSH2=${{ matrix.ssh2 }}            
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
 
-  cleanup-untagged:
-    needs: build-variants
-    runs-on: self-hosted
-    steps:
-      - name: Delete untagged images from registry
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const packages = ['nginx', 'apache2', 'prep_base', 'prep_nginx', 'prep_apache2', 'prep_nginx_imagick', 'prep_apache2_imagick'];
-            
-            for (const packageName of packages) {
-              try {
-                // Get all versions of the package
-                const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
-                  package_type: 'container',
-                  package_name: packageName,
-                  username: context.repo.owner
-                });
-                
-                // Filter versions that are ONLY tagged with SHA (no semantic tags)
-                const shaOnlyVersions = versions.data.filter(version => {
-                  const tags = version.metadata.container.tags;
-                  if (tags.length === 0) return true; // No tags at all
-                  // Check if all tags are SHA256 hashes (start with sha256:)
-                  return tags.every(tag => tag.startsWith('sha256:'));
-                });
-                
-                // Delete SHA-only versions
-                for (const version of shaOnlyVersions) {
-                  console.log(`Deleting SHA-only version ${version.id} of package ${packageName} (tags: ${version.metadata.container.tags.join(', ')})`);
-                  await github.rest.packages.deletePackageVersionForUser({
-                    package_type: 'container',
-                    package_name: packageName,
-                    username: context.repo.owner,
-                    package_version_id: version.id
-                  });
-                }
-                
-                console.log(`Cleaned up ${shaOnlyVersions.length} SHA-only versions from ${packageName}`);
-              } catch (error) {
-                console.log(`Error cleaning up ${packageName}: ${error.message}`);
-              }
-            }
+ #cleanup-untagged:
+ #  needs: build-variants
+ #  runs-on: self-hosted
+ #  steps:
+ #    - name: Delete untagged images from registry
+ #      uses: actions/github-script@v7
+ #      with:
+ #        github-token: ${{ secrets.GITHUB_TOKEN }}
+ #        script: |
+ #          const packages = ['nginx', 'apache2', 'prep_base', 'prep_nginx', 'prep_apache2', 'prep_nginx_imagick', 'prep_apache2_imagick'];
+ #          
+ #          for (const packageName of packages) {
+ #            try {
+ #              // Get all versions of the package
+ #              const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+ #                package_type: 'container',
+ #                package_name: packageName,
+ #                username: context.repo.owner
+ #              });
+ #              
+ #              // Filter versions that are ONLY tagged with SHA (no semantic tags)
+ #              const shaOnlyVersions = versions.data.filter(version => {
+ #                const tags = version.metadata.container.tags;
+ #                if (tags.length === 0) return true; // No tags at all
+ #                // Check if all tags are SHA256 hashes (start with sha256:)
+ #                return tags.every(tag => tag.startsWith('sha256:'));
+ #              });
+ #              
+ #              // Delete SHA-only versions
+ #              for (const version of shaOnlyVersions) {
+ #                console.log(`Deleting SHA-only version ${version.id} of package ${packageName} (tags: ${version.metadata.container.tags.join(', ')})`);
+ #                await github.rest.packages.deletePackageVersionForUser({
+ #                  package_type: 'container',
+ #                  package_name: packageName,
+ #                  username: context.repo.owner,
+ #                  package_version_id: version.id
+ #                });
+ #              }
+ #              
+ #              console.log(`Cleaned up ${shaOnlyVersions.length} SHA-only versions from ${packageName}`);
+ #            } catch (error) {
+ #              console.log(`Error cleaning up ${packageName}: ${error.message}`);
+ #            }
+ #          }
