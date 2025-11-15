@@ -1,32 +1,50 @@
 # nginx & Apache PHP Docker Images
 
 ## Overview
-This project builds custom Docker images for Nginx/Apache + PHP 8.4 using a multi-stage build approach for optimal caching and flexibility. Images are built automatically using GitHub Actions with a base → web → variants pipeline.
+This project builds custom Docker images for Nginx/Apache + PHP 8.4.1 using a multi-stage build approach for optimal caching and flexibility. **PHP 8.4.1 is compiled from source** to support Ubuntu 24.04 and 25.04 without dependency on third-party PPAs. Images are built automatically using GitHub Actions with a base → web → variants pipeline.
 
 Both nginx and apache images include comprehensive runtime configuration via environment variables, including **QUICK_SET presets** for common workload types (API, SHOP, STATIC, CMS).
 
+## Key Features
+- **PHP 8.4.1 built from source** - No dependency on sury.org or other PPAs
+- **Ubuntu 24.04 & 25.04 support** - Works on latest Ubuntu releases including plucky (25.10)
+- **Built-in extensions** - MySQL (mysqli, pdo_mysql), SQLite (pdo_sqlite, sqlite3), and core extensions
+- **Optional extensions via PECL** - Redis, Memcached, SSH2, Imagick compiled on-demand
+- **Multi-stage builds** - Optimized layer caching and minimal final image size
+
 ## Build Pipeline
-1. **prep_base:24.04, prep_base:latest** - Base Ubuntu with software-properties-common
-2. **prep_nginx:24.04, prep_nginx:latest** - Adds Nginx + PHP 8.4-FPM + common extensions
-3. **prep_apache2:24.04, prep_apache2:latest** - Adds Apache2 + PHP 8.4-FPM + common extensions
-4. **nginx:*, apache:*** - Final variants with optional extensions (imagick, phpdbg, sqlite, mysql, ssh2)
+1. **prep_base:24.04, prep_base:25.04** - Ubuntu base with PHP 8.4.1 compiled from source
+   - PHP configure flags: GD, Intl, MySQL, SQLite, FPM, Sodium, Argon2, and more
+   - PECL/PEAR 1.10.16 installed for extension management
+2. **prep_nginx:24.04, prep_nginx:25.04** - Adds Nginx + PHP runtime libraries
+3. **prep_apache2:24.04, prep_apache2:25.04** - Adds Apache2 + PHP runtime libraries
+4. **prep_*_imagick:24.04, prep_*_imagick:25.04** - Pre-compiles imagick extension (10+ min build)
+5. **nginx:*, apache:*** - Final variants with optional extensions (redis, memcached, ssh2, imagick)
 
 ## Image Variants
-Final images are tagged based on enabled extensions. Current matrix builds **128 variants** (2 servers × 2 versions × 2^5 extension combinations):
+Final images are tagged based on enabled extensions.
 
 **Base versions:**
-- `nginx:24.04` - Ubuntu 24.04 base (no optional extensions)
-- `nginx:latest` - Ubuntu latest base (no optional extensions)
-- `apache2:24.04` - Ubuntu 24.04 base (no optional extensions)
-- `apache2:latest` - Ubuntu latest base (no optional extensions)
+- `nginx:24.04` - Ubuntu 24.04 with PHP 8.4.1 (no optional extensions)
+- `nginx:25.04` - Ubuntu 25.04 with PHP 8.4.1 (no optional extensions)
+- `apache2:24.04` - Ubuntu 24.04 with PHP 8.4.1 (no optional extensions)
+- `apache2:25.04` - Ubuntu 25.04 with PHP 8.4.1 (no optional extensions)
 
-**Extension variants** (examples):
-- `nginx:24.04-imagick` - With php8.4-imagick
-- `nginx:24.04-imagick-mysql` - With imagick and MySQL support
-- `apache2:24.04-sqlite-mysql` - With SQLite and MySQL support
-- (Full matrix includes all combinations of: imagick, sqlite, mysql, ssh2)
+**Built-in PHP Extensions:**
+- Core: CLI, FPM, CGI, opcache
+- Database: mysqli, mysqlnd, pdo_mysql, pdo_sqlite, sqlite3
+- Encoding: mbstring, iconv, intl
+- Compression: bz2, zip, zlib
+- Crypto: openssl, sodium, password (argon2)
+- Web: curl, gd, xml, json
+- Other: readline, calendar, ctype, exif, fileinfo, ftp, gettext, posix, shmop, sockets, sysvmsg, sysvsem, sysvshm, tokenizer
 
-**Note:** php8.4-phpdbg is currently disabled as it's not yet available in Ondřej's PPA for PHP 8.4. It will be re-enabled once the package becomes available.
+**Optional Extension Variants** (installed via PECL):
+- `nginx:24.04-imagick` - With imagick for image processing
+- `nginx:24.04-redis` - With Redis client
+- `nginx:24.04-memcached` - With Memcached client
+- `nginx:24.04-ssh2` - With SSH2 protocol support
+- (Any combination of: imagick, redis, memcached, ssh2)
 
 ## Build Arguments
 
@@ -40,17 +58,17 @@ Final images are tagged based on enabled extensions. Current matrix builds **128
 - `BASE_IMAGE` (default: `prep_base:24.04`): Base prep image to build from
 
 ### Dockerfile_specific
-- `BASE_IMAGE` (default: `prep_nginx:24.04` or `prep_apache2:24.04`): Base prep image to build from
-- `INSTALL_IMAGICK` (default: `true`): Include php8.4-imagick
-- `INSTALL_SQLITE` (default: `true`): Include php8.4-sqlite3
-- `INSTALL_MYSQL` (default: `true`): Include php8.4-mysql
-- `INSTALL_SSH2` (default: `true`): Include php8.4-ssh2
+- `BASE_IMAGE` (default: `prep_nginx_imagick:24.04` or `prep_apache2_imagick:24.04`): Base prep image to build from
+- `INSTALL_IMAGICK` (default: `true`): Include imagick extension (pre-compiled in prep_*_imagick images)
+- `INSTALL_REDIS` (default: `true`): Include Redis extension via PECL
+- `INSTALL_MEMCACHED` (default: `true`): Include Memcached extension via PECL
+- `INSTALL_SSH2` (default: `true`): Include SSH2 extension via PECL
 
 ## Example Build Commands
 
 **Manual multi-stage build:**
 ```sh
-# 1. Build prep base
+# 1. Build prep base (PHP 8.4.1 from source - takes ~3 minutes)
 docker build -f Dockerfile_prep_base --build-arg BASE_IMAGE=ubuntu:24.04 -t prep_base:24.04 .
 
 # 2. Build prep nginx
@@ -59,12 +77,29 @@ docker build -f Dockerfile_prep_nginx --build-arg BASE_IMAGE=prep_base:24.04 -t 
 # 2b. Build prep apache2
 docker build -f Dockerfile_prep_apache2 --build-arg BASE_IMAGE=prep_base:24.04 -t prep_apache2:24.04 .
 
-# 3. Build specific variant (nginx)
+# 3. Build prep nginx with imagick (optional, takes ~10 minutes)
+docker build -f Dockerfile_prep_nginx_imagick --build-arg BASE_IMAGE=prep_nginx:24.04 -t prep_nginx_imagick:24.04 .
+
+# 4. Build specific variant (nginx)
 docker build -f Dockerfile_specific \
-  --build-arg BASE_IMAGE=prep_nginx:24.04 \
+  --build-arg BASE_IMAGE=prep_nginx_imagick:24.04 \
   --build-arg INSTALL_IMAGICK=true \
-  --build-arg INSTALL_PHPDBG=false \
-  -t nginx:24.04-imagick .
+  --build-arg INSTALL_REDIS=true \
+  --build-arg INSTALL_MEMCACHED=true \
+  --build-arg INSTALL_SSH2=true \
+  -t nginx:24.04-full .
+```
+
+**Using Docker Compose for testing:**
+```sh
+# Test Ubuntu 24.04 builds
+.\build-test.ps1 -Version 24.04
+
+# Test Ubuntu 25.04 builds
+.\build-test.ps1 -Version 25.04
+
+# Test both versions
+.\build-test.ps1 -Version all
 ```
 
 ## Usage
@@ -328,8 +363,39 @@ Edit `Dockerfile_prep_nginx` or `Dockerfile_prep_apache2` to add common extensio
 Adjust the build matrix in `.github/workflows/docker-build.yml` to add more extension combinations.
 
 ## Troubleshooting
-- If a package is missing for a specific Ubuntu version, check the Dockerfile and adjust the package list.
-- For new Ubuntu versions, ensure Ondřej's PPA supports the version.
+
+### Build Issues
+- **PHP compilation fails**: Ensure all build dependencies are installed (see Dockerfile_prep_base)
+- **libzip package not found**: The build auto-detects libzip4 (24.04) or libzip5 (25.04)
+- **PECL extension fails**: Check that PECL is accessible at `/usr/local/bin/pecl`
+- **Extension loading errors**: Verify runtime libraries are installed (e.g., libssh2-1, libmemcached11)
+
+### Testing
+Use the included test framework:
+```powershell
+# Build and test all Ubuntu 24.04 images
+.\build-test.ps1 -Version 24.04
+
+# Skip build and just test running containers
+.\build-test.ps1 -Version 24.04 -SkipBuild
+
+# Show full build output
+.\build-test.ps1 -Version 24.04 -ShowBuildOutput
+```
+
+Test containers expose:
+- Ubuntu 24.04 Nginx: http://localhost:8084
+- Ubuntu 24.04 Apache: http://localhost:8085
+- Ubuntu 25.04 Nginx: http://localhost:8086
+- Ubuntu 25.04 Apache: http://localhost:8087
+
+### PHP Configuration
+PHP 8.4.1 is installed to `/usr/local/php8.4/` with:
+- Binary: `/usr/local/bin/php` (symlink)
+- Config: `/usr/local/php8.4/etc/php.ini`
+- FPM Config: `/usr/local/php8.4/etc/php-fpm.conf`
+- Extensions: `/usr/local/php8.4/etc/conf.d/`
+- Socket: `/var/run/php/php8.4-fpm.sock`
 
 ---
 

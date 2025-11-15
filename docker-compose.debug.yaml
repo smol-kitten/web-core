@@ -1,0 +1,216 @@
+services:
+  # ========================================
+  # Ubuntu 24.04 Build Chain
+  # ========================================
+  
+  prep-base-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_base
+      args:
+        BASE_IMAGE: ubuntu:24.04
+    image: prep_base:24.04
+    container_name: prep-base-2404
+    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
+
+  prep-nginx-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx
+      args:
+        BASE_IMAGE: prep_base:24.04
+    image: prep_nginx:24.04
+    container_name: prep-nginx-2404
+    depends_on:
+      - prep-base-2404
+    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
+
+  prep-apache-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2
+      args:
+        BASE_IMAGE: prep_base:24.04
+    image: prep_apache2:24.04
+    container_name: prep-apache-2404
+    depends_on:
+      - prep-base-2404
+    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
+
+  prep-nginx-imagick-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx_imagick
+      args:
+        BASE_IMAGE: prep_nginx:24.04
+    image: prep_nginx_imagick:24.04
+    container_name: prep-nginx-imagick-2404
+    depends_on:
+      - prep-nginx-2404
+    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
+
+  prep-apache-imagick-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2_imagick
+      args:
+        BASE_IMAGE: prep_apache2:24.04
+    image: prep_apache2_imagick:24.04
+    container_name: prep-apache-imagick-2404
+    depends_on:
+      - prep-apache-2404
+    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
+
+  # Test variant: nginx with imagick, redis, memcached, ssh2
+  variant-nginx-full-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_specific
+      args:
+        BASE_IMAGE: prep_nginx_imagick:24.04
+        INSTALL_IMAGICK: "true"
+        INSTALL_REDIS: "true"
+        INSTALL_MEMCACHED: "true"
+        INSTALL_SSH2: "true"
+    image: nginx-php:24.04-full
+    container_name: variant-nginx-full-2404
+    ports:
+      - "8084:80"
+    environment:
+      - QUICK_SET=CMS
+      - PHP_MEMORY_LIMIT=512M
+      - EXPOSE_SERVER_SOFTWARE=on
+    depends_on:
+      - prep-nginx-imagick-2404
+    profiles: ["test-2404", "test-all"]
+
+  # Test variant: apache with imagick, all extensions
+  variant-apache-full-2404:
+    build:
+      context: .
+      dockerfile: Dockerfile_specific
+      args:
+        BASE_IMAGE: prep_apache2_imagick:24.04
+        INSTALL_IMAGICK: "true"
+        INSTALL_REDIS: "true"
+        INSTALL_MEMCACHED: "true"
+        INSTALL_SSH2: "true"
+    image: apache-php:24.04-full
+    container_name: variant-apache-full-2404
+    ports:
+      - "8085:80"
+    environment:
+      - QUICK_SET=API
+      - PHP_MEMORY_LIMIT=256M
+      - EXPOSE_SERVER_SOFTWARE=on
+    depends_on:
+      - prep-apache-imagick-2404
+    profiles: ["test-2404", "test-all"]
+
+  # ========================================
+  # Ubuntu 25.04 (Plucky) Build Chain
+  # ========================================
+  
+  prep-base-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_base
+      args:
+        BASE_IMAGE: ubuntu:25.04
+    image: prep_base:25.04
+    container_name: prep-base-2504
+    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
+
+  prep-nginx-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx
+      args:
+        BASE_IMAGE: prep_base:25.04
+    image: prep_nginx:25.04
+    container_name: prep-nginx-2504
+    depends_on:
+      - prep-base-2504
+    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
+
+  prep-apache-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2
+      args:
+        BASE_IMAGE: prep_base:25.04
+    image: prep_apache2:25.04
+    container_name: prep-apache-2504
+    depends_on:
+      - prep-base-2504
+    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
+
+  prep-nginx-imagick-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_nginx_imagick
+      args:
+        BASE_IMAGE: prep_nginx:25.04
+    image: prep_nginx_imagick:25.04
+    container_name: prep-nginx-imagick-2504
+    depends_on:
+      - prep-nginx-2504
+    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
+
+  prep-apache-imagick-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_prep_apache2_imagick
+      args:
+        BASE_IMAGE: prep_apache2:25.04
+    image: prep_apache2_imagick:25.04
+    container_name: prep-apache-imagick-2504
+    depends_on:
+      - prep-apache-2504
+    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
+
+  # Test variant: nginx with imagick, all extensions (25.04)
+  variant-nginx-full-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_specific
+      args:
+        BASE_IMAGE: prep_nginx_imagick:25.04
+        INSTALL_IMAGICK: "true"
+        INSTALL_REDIS: "true"
+        INSTALL_MEMCACHED: "true"
+        INSTALL_SSH2: "true"
+    image: nginx-php:25.04-full
+    container_name: variant-nginx-full-2504
+    ports:
+      - "8086:80"
+    environment:
+      - QUICK_SET=SHOP
+      - PHP_MEMORY_LIMIT=512M
+      - EXPOSE_SERVER_SOFTWARE=on
+    depends_on:
+      - prep-nginx-imagick-2504
+    profiles: ["test-2504", "test-all"]
+
+  # Test variant: apache with imagick, all extensions (25.04)
+  variant-apache-full-2504:
+    build:
+      context: .
+      dockerfile: Dockerfile_specific
+      args:
+        BASE_IMAGE: prep_apache2_imagick:25.04
+        INSTALL_IMAGICK: "true"
+        INSTALL_REDIS: "true"
+        INSTALL_MEMCACHED: "true"
+        INSTALL_SSH2: "true"
+    image: apache-php:25.04-full
+    container_name: variant-apache-full-2504
+    ports:
+      - "8087:80"
+    environment:
+      - QUICK_SET=STATIC
+      - PHP_MEMORY_LIMIT=128M
+      - EXPOSE_SERVER_SOFTWARE=on
+    depends_on:
+      - prep-apache-imagick-2504
+    profiles: ["test-2504", "test-all"]

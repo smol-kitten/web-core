@@ -112,10 +112,10 @@ PHP_FPM_PM_START_SERVERS=${PHP_FPM_PM_START_SERVERS:-5}
 PHP_FPM_PM_MIN_SPARE_SERVERS=${PHP_FPM_PM_MIN_SPARE_SERVERS:-5}
 PHP_FPM_PM_MAX_SPARE_SERVERS=${PHP_FPM_PM_MAX_SPARE_SERVERS:-10}
 
-echo "🐾 Configuring apache + PHP-FPM with QUICK_SET=${QUICK_SET:-default}"
+echo "🐾 Configuring Apache + PHP-FPM with QUICK_SET=${QUICK_SET:-default}"
 
 # --- Configure PHP ---
-PHP_INI="/etc/php/8.4/fpm/php.ini"
+PHP_INI="/usr/local/php8.4/etc/php.ini"
 if [ -f "$PHP_INI" ]; then
   sed -i "s/^memory_limit = .*/memory_limit = $PHP_MEMORY_LIMIT/" "$PHP_INI"
   sed -i "s/^max_execution_time = .*/max_execution_time = $PHP_MAX_EXECUTION_TIME/" "$PHP_INI"
@@ -139,7 +139,7 @@ if [ -f "$PHP_INI" ]; then
 fi
 
 # --- Configure PHP-FPM pool ---
-FPM_POOL="/etc/php/8.4/fpm/pool.d/www.conf"
+FPM_POOL="/usr/local/php8.4/etc/php-fpm.d/www.conf"
 if [ -f "$FPM_POOL" ]; then
   sed -i "s/^pm = .*/pm = $PHP_FPM_PM/" "$FPM_POOL"
   sed -i "s/^pm.max_children = .*/pm.max_children = $PHP_FPM_PM_MAX_CHILDREN/" "$FPM_POOL"
@@ -202,7 +202,7 @@ echo "   PHP-FPM: $PHP_FPM_PM (max_children=$PHP_FPM_PM_MAX_CHILDREN)"
 echo "   Server tokens: $EXPOSE_SERVER_SOFTWARE"
 
 # Start services
-service php8.4-fpm start
+/usr/local/bin/php-fpm --daemonize
 service apache2 start
 
 # Keep container running and stream logs

@@ -7,13 +7,9 @@ RUN apt-get update && \
     apt-get install -y \
         libmagickwand-dev \
         imagemagick \
-        php8.4-dev \
-        php-pear \
-        build-essential && \
-    pecl install imagick && \
-    echo "extension=imagick.so" > /etc/php/8.4/mods-available/imagick.ini && \
-    phpenmod imagick && \
-    apt-get purge -y build-essential php8.4-dev php-pear && \
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/pear
+        build-essential \
+        autoconf \
+        pkg-config && \
+    /usr/local/bin/pecl install imagick && \
+    echo "extension=imagick.so" > /usr/local/php8.4/etc/conf.d/20-imagick.ini
+

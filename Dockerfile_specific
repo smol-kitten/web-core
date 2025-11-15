@@ -6,32 +6,77 @@ FROM ${BASE_IMAGE}
 # This avoids 10+ minute PECL compilation for every variant
 
 # Build args for optional extensions
+# Note: SQLite, MySQL/MySQLi/PDO MySQL are already built into PHP from source
 ARG INSTALL_IMAGICK=true
-ARG INSTALL_SQLITE=false
-ARG INSTALL_MYSQL=false
 ARG INSTALL_SSH2=false
+ARG INSTALL_REDIS=false
+ARG INSTALL_MEMCACHED=false
 
-# Note: phpdbg is not yet available in Ondřej's PPA for PHP 8.4
-# It has been removed from the build matrix
-
-# Add Debian sid repository for additional PHP packages (like php8.4-sqlite3)
-# Import GPG keys first to avoid verification errors
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gnupg && \
-    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 6ED0E7B82643E131 78DBA3BC47EF2265 && \
-    echo "deb http://ftp.de.debian.org/debian sid main" >> /etc/apt/sources.list && apt-get update
-    
-
-RUN if [ "$INSTALL_SQLITE" = "true" ]; then \
-        apt-get install -y php8.4-sqlite3; \
-    fi
-
-RUN if [ "$INSTALL_MYSQL" = "true" ]; then \
-        apt-get install -y php8.4-mysql; \
-    fi
-
+# Install optional extensions via PECL
+# SSH2 - SSH protocol support
 RUN if [ "$INSTALL_SSH2" = "true" ]; then \
-        apt-get install -y php8.4-ssh2; \
+        apt-get update && \
+        apt-get install -y libssh2-1-dev && \
+        pecl install ssh2-1.4.1 && \
+        echo "extension=ssh2.so" > /usr/local/php8.4/etc/conf.d/20-ssh2.ini && \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN apt-get purge -y gnupg && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Redis - In-memory data structure store client
+RUN if [ "$INSTALL_REDIS" = "true" ]; then \
+        pecl install redis && \
+        echo "extension=redis.so" > /usr/local/php8.4/etc/conf.d/20-redis.ini; \
+    fi
+
+# Memcached - Distributed memory caching system client
+RUN if [ "$INSTALL_MEMCACHED" = "true" ]; then \
+        apt-get update && \
+        apt-get install -y libmemcached-dev zlib1g-dev && \
+        pecl install memcached && \
+        echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini && \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Install runtime libraries explicitly before cleanup
+# These are dependencies of dev packages that will be removed
+RUN if [ "$INSTALL_SSH2" = "true" ] || [ "$INSTALL_MEMCACHED" = "true" ]; then \
+        apt-get update && \
+        ([ "$INSTALL_SSH2" = "true" ] && apt-get install -y --no-install-recommends libssh2-1 || true) && \
+        ([ "$INSTALL_MEMCACHED" = "true" ] && apt-get install -y --no-install-recommends libmemcached11 || true) && \
+        apt-mark manual libssh2-1 libmemcached11 2>/dev/null && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Cleanup: Remove build tools and dev packages to reduce image size
+RUN apt-get purge -y \
+        build-essential \
+        autoconf \
+        bison \
+        re2c \
+        pkg-config \
+        libxml2-dev \
+        libsqlite3-dev \
+        libssl-dev \
+        libcurl4-openssl-dev \
+        libonig-dev \
+        libreadline-dev \
+        libbz2-dev \
+        libzip-dev \
+        libpng-dev \
+        libjpeg-dev \
+        libfreetype6-dev \
+        libwebp-dev \
+        libxpm-dev \
+        zlib1g-dev \
+        libsodium-dev \
+        libargon2-dev \
+        libmagickwand-dev \
+        libssh2-1-dev \
+        libmemcached-dev \
+        wget 2>/dev/null || true && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* \
+           /usr/src/php-8.4.1 \
+           /tmp/* \
+           /var/tmp/*

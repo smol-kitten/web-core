@@ -201,10 +201,10 @@ jobs:
         imagick:
           - true
           - false
-        sqlite:
+        redis:
           - true
           - false
-        mysql:
+        memcached:
           - true
           - false
         ssh2:
@@ -231,8 +231,8 @@ jobs:
           PARTS=""
           
           [ "${{ matrix.imagick }}" = "true" ] && PARTS="${PARTS}-imagick"
-          [ "${{ matrix.sqlite }}" = "true" ] && PARTS="${PARTS}-sqlite"
-          [ "${{ matrix.mysql }}" = "true" ] && PARTS="${PARTS}-mysql"
+          [ "${{ matrix.redis }}" = "true" ] && PARTS="${PARTS}-redis"
+          [ "${{ matrix.memcached }}" = "true" ] && PARTS="${PARTS}-memcached"
           [ "${{ matrix.ssh2 }}" = "true" ] && PARTS="${PARTS}-ssh2"
           
           VARIANT="${PARTS}"
@@ -269,8 +269,8 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
-            INSTALL_SQLITE=${{ matrix.sqlite }}
-            INSTALL_MYSQL=${{ matrix.mysql }}
+            INSTALL_REDIS=${{ matrix.redis }}
+            INSTALL_MEMCACHED=${{ matrix.memcached }}
             INSTALL_SSH2=${{ matrix.ssh2 }}            
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
 
