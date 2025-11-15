@@ -37,15 +37,19 @@ RUN if [ "$INSTALL_MEMCACHED" = "true" ]; then \
         apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# Install runtime libraries explicitly before cleanup
+# Install and protect runtime libraries explicitly before cleanup
 # These are dependencies of dev packages that will be removed
-RUN if [ "$INSTALL_SSH2" = "true" ] || [ "$INSTALL_MEMCACHED" = "true" ]; then \
-        apt-get update && \
-        ([ "$INSTALL_SSH2" = "true" ] && apt-get install -y --no-install-recommends libssh2-1 || true) && \
-        ([ "$INSTALL_MEMCACHED" = "true" ] && apt-get install -y --no-install-recommends libmemcached11 || true) && \
-        apt-mark manual libssh2-1 libmemcached11 2>/dev/null && \
-        rm -rf /var/lib/apt/lists/*; \
-    fi
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgd3 \
+        $(apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | head -1) \
+        $([ "$INSTALL_SSH2" = "true" ] && echo "libssh2-1" || echo "") \
+        $([ "$INSTALL_MEMCACHED" = "true" ] && echo "libmemcached11" || echo "") && \
+    apt-mark manual libgd3 2>/dev/null && \
+    apt-mark manual $(apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | head -1) 2>/dev/null && \
+    ([ "$INSTALL_SSH2" = "true" ] && apt-mark manual libssh2-1 2>/dev/null || true) && \
+    ([ "$INSTALL_MEMCACHED" = "true" ] && apt-mark manual libmemcached11 2>/dev/null || true) && \
+    rm -rf /var/lib/apt/lists/*
 
 # Cleanup: Remove build tools and dev packages to reduce image size
 RUN apt-get purge -y \
@@ -70,6 +74,8 @@ RUN apt-get purge -y \
         zlib1g-dev \
         libsodium-dev \
         libargon2-dev \
+        libgd-dev \
+        libicu-dev \
         libmagickwand-dev \
         libssh2-1-dev \
         libmemcached-dev \

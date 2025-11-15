@@ -1,25 +1,24 @@
 # nginx & Apache PHP Docker Images
 
 ## Overview
-This project builds custom Docker images for Nginx/Apache + PHP 8.4.1 using a multi-stage build approach for optimal caching and flexibility. **PHP 8.4.1 is compiled from source** to support Ubuntu 24.04 and 25.04 without dependency on third-party PPAs. Images are built automatically using GitHub Actions with a base → web → variants pipeline.
+This project builds custom Docker images for Nginx/Apache + PHP 8.4.1 using a multi-stage build approach for optimal caching and flexibility. **PHP 8.4.1 is compiled from source** to support Ubuntu 24.04, 25.04, and 25.10 without dependency on third-party PPAs. Images are built automatically using GitHub Actions with a base → web → variants pipeline.
 
 Both nginx and apache images include comprehensive runtime configuration via environment variables, including **QUICK_SET presets** for common workload types (API, SHOP, STATIC, CMS).
 
 ## Key Features
 - **PHP 8.4.1 built from source** - No dependency on sury.org or other PPAs
-- **Ubuntu 24.04 & 25.04 support** - Works on latest Ubuntu releases including plucky (25.10)
+- **Ubuntu 24.04, 25.04 & 25.10 support** - Dynamic package detection handles t64 transition in 25.10
 - **Built-in extensions** - MySQL (mysqli, pdo_mysql), SQLite (pdo_sqlite, sqlite3), and core extensions
 - **Optional extensions via PECL** - Redis, Memcached, SSH2, Imagick compiled on-demand
 - **Multi-stage builds** - Optimized layer caching and minimal final image size
 
 ## Build Pipeline
-1. **prep_base:24.04, prep_base:25.04** - Ubuntu base with PHP 8.4.1 compiled from source
+1. **prep_base:24.04, prep_base:25.04, prep_base:25.10** - Ubuntu base with PHP 8.4.1 compiled from source
    - PHP configure flags: GD, Intl, MySQL, SQLite, FPM, Sodium, Argon2, and more
    - PECL/PEAR 1.10.16 installed for extension management
-2. **prep_nginx:24.04, prep_nginx:25.04** - Adds Nginx + PHP runtime libraries
-3. **prep_apache2:24.04, prep_apache2:25.04** - Adds Apache2 + PHP runtime libraries
-4. **prep_*_imagick:24.04, prep_*_imagick:25.04** - Pre-compiles imagick extension (10+ min build)
-5. **nginx:*, apache:*** - Final variants with optional extensions (redis, memcached, ssh2, imagick)
+2. **prep_nginx:*, prep_apache2:*** - Adds web server + PHP runtime libraries (dynamic package detection for t64 in 25.10)
+3. **prep_*_imagick:*** - Pre-compiles imagick extension (10+ min build)
+4. **nginx:*, apache:*** - Final variants with optional extensions (redis, memcached, ssh2, imagick)
 
 ## Image Variants
 Final images are tagged based on enabled extensions.
@@ -27,8 +26,10 @@ Final images are tagged based on enabled extensions.
 **Base versions:**
 - `nginx:24.04` - Ubuntu 24.04 with PHP 8.4.1 (no optional extensions)
 - `nginx:25.04` - Ubuntu 25.04 with PHP 8.4.1 (no optional extensions)
+- `nginx:25.10` - Ubuntu 25.10 with PHP 8.4.1 (no optional extensions)
 - `apache2:24.04` - Ubuntu 24.04 with PHP 8.4.1 (no optional extensions)
 - `apache2:25.04` - Ubuntu 25.04 with PHP 8.4.1 (no optional extensions)
+- `apache2:25.10` - Ubuntu 25.10 with PHP 8.4.1 (no optional extensions)
 
 **Built-in PHP Extensions:**
 - Core: CLI, FPM, CGI, opcache
@@ -366,9 +367,10 @@ Adjust the build matrix in `.github/workflows/docker-build.yml` to add more exte
 
 ### Build Issues
 - **PHP compilation fails**: Ensure all build dependencies are installed (see Dockerfile_prep_base)
-- **libzip package not found**: The build auto-detects libzip4 (24.04) or libzip5 (25.04)
+- **libzip package not found**: The build auto-detects libzip4 (24.04) or libzip5 (25.04/25.10)
+- **t64 package errors (25.10)**: Dynamic detection handles libxml2-16, libcurl4t64, libssl3t64, etc.
 - **PECL extension fails**: Check that PECL is accessible at `/usr/local/bin/pecl`
-- **Extension loading errors**: Verify runtime libraries are installed (e.g., libssh2-1, libmemcached11)
+- **Extension loading errors**: Verify runtime libraries are installed (e.g., libssh2-1, libmemcached11, libgd3, libicu)
 
 ### Testing
 Use the included test framework:
@@ -388,6 +390,8 @@ Test containers expose:
 - Ubuntu 24.04 Apache: http://localhost:8085
 - Ubuntu 25.04 Nginx: http://localhost:8086
 - Ubuntu 25.04 Apache: http://localhost:8087
+- Ubuntu 25.10 Nginx: http://localhost:8088
+- Ubuntu 25.10 Apache: http://localhost:8089
 
 ### PHP Configuration
 PHP 8.4.1 is installed to `/usr/local/php8.4/` with:

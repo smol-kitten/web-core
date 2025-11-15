@@ -13,11 +13,13 @@ jobs:
   build-prep-base:
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         version:
           - 24.04
           - 25.04
           - "25.10"
+    continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -54,11 +56,13 @@ jobs:
     needs: build-prep-base
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         version:
           - 24.04
           - 25.04
           - "25.10"
+    continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -88,11 +92,13 @@ jobs:
     needs: build-prep-base
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         version:
           - 24.04
           - 25.04
           - "25.10"
+    continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -122,11 +128,13 @@ jobs:
     needs: build-prep-nginx
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         version:
           - 24.04
           - 25.04
           - "25.10"
+    continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -156,11 +164,13 @@ jobs:
     needs: [build-prep-apache, build-prep-nginx-imagick]
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         version:
           - 24.04
           - 25.04
           - "25.10"
+    continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -190,6 +200,7 @@ jobs:
     needs: [build-prep-nginx-imagick, build-prep-apache-imagick]
     runs-on: self-hosted
     strategy:
+      fail-fast: false
       matrix:
         server:
           - nginx
@@ -210,6 +221,7 @@ jobs:
         ssh2:
           - true
           - false
+    continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
       

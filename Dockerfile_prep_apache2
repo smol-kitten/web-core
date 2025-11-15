@@ -2,18 +2,19 @@ ARG BASE_IMAGE=prep_base:24.04
 FROM ${BASE_IMAGE}
 
 # Install apache2 and runtime dependencies for PHP extensions
+# Dynamically detect package names for different Ubuntu versions (t64 transition in 25.10)
 RUN apt-get update && \
         apt-get install -y \
             apache2 \
-            libxml2 \
+            $(apt-cache search --names-only '^libxml2(-[0-9]+)?$' | awk '{print $1}' | head -1) \
             libsqlite3-0 \
-            libssl3 \
-            libcurl4 \
+            $(apt-cache search --names-only '^libssl3(t64)?$' | awk '{print $1}' | head -1) \
+            $(apt-cache search --names-only '^libcurl4(t64)?$' | awk '{print $1}' | head -1) \
             libonig5 \
-            libreadline8 \
+            $(apt-cache search --names-only '^libreadline8(t64)?$' | awk '{print $1}' | head -1) \
             libbz2-1.0 \
             $(apt-cache search ^libzip[45]$ | awk '{print $1}' | head -1) \
-            libpng16-16 \
+            $(apt-cache search --names-only '^libpng16-16(t64)?$' | awk '{print $1}' | head -1) \
             libjpeg8 \
             libfreetype6 \
             libwebp7 \
