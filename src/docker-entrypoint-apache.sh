@@ -201,9 +201,27 @@ echo "   Apache workers: $APACHE_MAX_REQUEST_WORKERS | KeepAlive: ${APACHE_KEEPA
 echo "   PHP-FPM: $PHP_FPM_PM (max_children=$PHP_FPM_PM_MAX_CHILDREN)"
 echo "   Server tokens: $EXPOSE_SERVER_SOFTWARE"
 
+# --- Custom Hook Script ---
+# If /docker-entrypoint-custom.sh exists, execute it before starting services
+# This allows users extending the image to add custom initialization without replacing the entire entrypoint
+if [ -f "/docker-entrypoint-custom.sh" ]; then
+  echo "🔧 Executing custom entrypoint hook: /docker-entrypoint-custom.sh"
+  /bin/bash /docker-entrypoint-custom.sh
+fi
+
 # Start services
-/usr/local/bin/php-fpm --daemonize
+echo "🚀 Starting PHP-FPM..."
+/usr/local/bin/php-fpm --fpm-config /usr/local/php8.4/etc/php-fpm.conf --daemonize
+
+echo "🚀 Starting Apache..."
 service apache2 start
 
+# Start cron if installed
+if command -v cron >/dev/null 2>&1; then
+  echo "🕐 Starting Cron..."
+  service cron start
+fi
+
 # Keep container running and stream logs
-tail -f /var/log/apache2/access.log /var/log/apache2/error.log
+echo "📋 Tailing logs..."
+tail -f /var/log/apache2/access.log /var/log/apache2/error.log /var/log/php-fpm/error.log

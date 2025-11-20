@@ -11,6 +11,7 @@ ARG INSTALL_IMAGICK=true
 ARG INSTALL_SSH2=false
 ARG INSTALL_REDIS=false
 ARG INSTALL_MEMCACHED=false
+ARG INSTALL_CRON=false
 
 # Install optional extensions via PECL
 # SSH2 - SSH protocol support
@@ -18,8 +19,7 @@ RUN if [ "$INSTALL_SSH2" = "true" ]; then \
         apt-get update && \
         apt-get install -y libssh2-1-dev && \
         pecl install ssh2-1.4.1 && \
-        echo "extension=ssh2.so" > /usr/local/php8.4/etc/conf.d/20-ssh2.ini && \
-        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+        echo "extension=ssh2.so" > /usr/local/php8.4/etc/conf.d/20-ssh2.ini; \
     fi
 
 # Redis - In-memory data structure store client
@@ -33,8 +33,13 @@ RUN if [ "$INSTALL_MEMCACHED" = "true" ]; then \
         apt-get update && \
         apt-get install -y libmemcached-dev zlib1g-dev && \
         pecl install memcached && \
-        echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini && \
-        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+        echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini; \
+    fi
+
+# Cron - Task scheduler for running periodic jobs
+RUN if [ "$INSTALL_CRON" = "true" ]; then \
+        apt-get update && \
+        apt-get install -y cron; \
     fi
 
 # Install and protect runtime libraries explicitly before cleanup

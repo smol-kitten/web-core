@@ -40,12 +40,13 @@ Final images are tagged based on enabled extensions.
 - Web: curl, gd, xml, json
 - Other: readline, calendar, ctype, exif, fileinfo, ftp, gettext, posix, shmop, sockets, sysvmsg, sysvsem, sysvshm, tokenizer
 
-**Optional Extension Variants** (installed via PECL):
+**Optional Extension Variants** (installed via PECL or apt):
 - `nginx:24.04-imagick` - With imagick for image processing
 - `nginx:24.04-redis` - With Redis client
 - `nginx:24.04-memcached` - With Memcached client
 - `nginx:24.04-ssh2` - With SSH2 protocol support
-- (Any combination of: imagick, redis, memcached, ssh2)
+- `nginx:24.04-cron` - With cron daemon for scheduled tasks
+- (Any combination of: imagick, redis, memcached, ssh2, cron)
 
 ## Build Arguments
 
@@ -64,6 +65,7 @@ Final images are tagged based on enabled extensions.
 - `INSTALL_REDIS` (default: `true`): Include Redis extension via PECL
 - `INSTALL_MEMCACHED` (default: `true`): Include Memcached extension via PECL
 - `INSTALL_SSH2` (default: `true`): Include SSH2 extension via PECL
+- `INSTALL_CRON` (default: `false`): Include cron daemon for scheduled tasks
 
 ## Example Build Commands
 
@@ -88,6 +90,7 @@ docker build -f Dockerfile_specific \
   --build-arg INSTALL_REDIS=true \
   --build-arg INSTALL_MEMCACHED=true \
   --build-arg INSTALL_SSH2=true \
+  --build-arg INSTALL_CRON=true \
   -t nginx:24.04-full .
 ```
 
@@ -328,10 +331,115 @@ COPY ./your-nginx-site.conf /etc/nginx/sites-enabled/nginx.conf
 # Optional: Replace main nginx config
 COPY ./your-nginx.conf /etc/nginx/nginx.conf
 
-# Optional: Replace entrypoint script
+# Optional: Add custom initialization without replacing the entire entrypoint
+# This script will be executed before services start
+COPY ./your-custom-init.sh /docker-entrypoint-custom.sh
+RUN chmod +x /docker-entrypoint-custom.sh
+
+# Optional: Replace entrypoint script entirely
 COPY ./your-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 ```
+
+### Custom Entrypoint Hook
+
+Both nginx and apache images support a **custom entrypoint hook** that executes before services start. This allows you to add custom initialization logic (install additional packages, configure services, etc.) without replacing the entire entrypoint script.
+
+**To use the hook:**
+1. Create a bash script with your custom initialization code
+2. Copy it to `/docker-entrypoint-custom.sh` in your Dockerfile
+3. Make it executable
+
+**Example custom hook script:**
+```bash
+#!/bin/bash
+# /docker-entrypoint-custom.sh
+
+echo "🔧 Running custom initialization..."
+
+# Install additional packages
+apt-get update && apt-get install -y vim curl
+
+# Configure additional PHP settings
+echo "zend_extension=xdebug.so" > /usr/local/php8.4/etc/conf.d/20-xdebug.ini
+
+# Create additional directories
+mkdir -p /var/www/html/cache
+chown www-data:www-data /var/www/html/cache
+
+echo "✅ Custom initialization complete"
+```
+
+**Using in Dockerfile:**
+```dockerfile
+FROM ghcr.io/smol-kitten/nginx:24.04
+
+COPY ./my-app /var/www/html
+COPY ./custom-init.sh /docker-entrypoint-custom.sh
+RUN chmod +x /docker-entrypoint-custom.sh
+```
+
+The custom hook runs **after** environment variable configuration but **before** PHP-FPM and web server startup, giving you full control over the initialization process.
+
+### Using Cron for Scheduled Tasks
+
+Images with the `-cron` suffix include the cron daemon, which is automatically started after the web server. To add scheduled tasks:
+
+**Option 1: Add crontab via Dockerfile**
+```dockerfile
+FROM ghcr.io/smol-kitten/nginx:24.04-cron
+
+COPY ./app /var/www/html
+
+# Add crontab entries
+RUN echo "*/5 * * * * www-data /usr/local/bin/php /var/www/html/cron.php >> /var/log/cron.log 2>&1" >> /etc/crontab
+RUN echo "0 2 * * * www-data /usr/local/bin/php /var/www/html/cleanup.php" >> /etc/crontab
+```
+
+**Option 2: Add crontab via custom entrypoint hook**
+```bash
+#!/bin/bash
+# /docker-entrypoint-custom.sh
+
+echo "🕒 Setting up cron jobs..."
+
+# Add cron job for www-data user
+echo "*/15 * * * * /usr/local/bin/php /var/www/html/tasks/scheduled.php >> /var/log/cron.log 2>&1" | crontab -u www-data -
+
+# Or add to system crontab
+cat >> /etc/crontab << 'EOF'
+# Run maintenance every hour
+0 * * * * www-data /usr/local/bin/php /var/www/html/maintenance.php
+# Database backup daily at 3 AM
+0 3 * * * root /usr/local/bin/php /var/www/html/backup.php
+EOF
+
+echo "✅ Cron jobs configured"
+```
+
+**Option 3: Volume mount a crontab file**
+```sh
+docker run -p 8080:80 \
+  -v ./my-crontab:/etc/cron.d/app-cron:ro \
+  ghcr.io/smol-kitten/nginx:24.04-cron
+```
+
+**Cron log monitoring:**
+Cron output is typically logged to syslog. To view logs:
+```sh
+# Inside the container
+docker exec <container-id> tail -f /var/log/syslog
+
+# Or redirect cron job output to a specific file
+# */5 * * * * www-data /usr/local/bin/php /var/www/html/job.php >> /var/log/cron.log 2>&1
+```
+
+**Best practices:**
+- Use absolute paths in cron jobs (`/usr/local/bin/php` instead of `php`)
+- Specify the user for each cron job (typically `www-data` for PHP scripts)
+- Redirect output to log files for debugging
+- Use `/etc/cron.d/` for application-specific crontabs
+- Ensure cron jobs have proper permissions and environment variables
 
 ### Key Files to Customize
 
