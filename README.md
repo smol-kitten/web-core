@@ -1,5 +1,12 @@
 # nginx & Apache PHP Docker Images
 
+[![Build Docker Images](https://github.com/smol-kitten/web-core/actions/workflows/docker-build.yml/badge.svg?branch=main)](https://github.com/smol-kitten/web-core/actions/workflows/docker-build.yml)
+[![PHP Version](https://img.shields.io/badge/PHP-8.4.1-777BB4?logo=php&logoColor=white)](https://www.php.net/)
+[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![Ubuntu 25.04](https://img.shields.io/badge/Ubuntu-25.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![License](https://img.shields.io/github/license/smol-kitten/web-core)](LICENSE)
+[![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-packages-blue?logo=docker)](https://github.com/smol-kitten?tab=packages&repo_name=web-core)
+
 ## Overview
 This project builds custom Docker images for Nginx/Apache + PHP 8.4.1 using a multi-stage build approach for optimal caching and flexibility. **PHP 8.4.1 is compiled from source** to support Ubuntu 24.04, 25.04, and 25.10 without dependency on third-party PPAs. Images are built automatically using GitHub Actions with a base → web → variants pipeline.
 
