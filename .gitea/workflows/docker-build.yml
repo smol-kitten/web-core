@@ -28,12 +28,6 @@ jobs:
           - "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
