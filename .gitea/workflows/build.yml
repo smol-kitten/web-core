@@ -1,0 +1,58 @@
+# Docker Build workflow for Gitea
+# This builds multiple Docker image variants for different OS versions and features
+
+name: Build Docker Images
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-prep-base:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - 24.04
+          - 25.04
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build prep base image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_base
+          push: false
+          tags: prep_base:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=ubuntu:${{ matrix.version }}
+
+  build-variants:
+    needs: build-prep-base
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - 24.04
+          - 25.04
+        server:
+          - nginx
+          - apache2
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build variant image
+        run: |
+          echo "Would build ${{ matrix.server }} for Ubuntu ${{ matrix.version }}"
+        continue-on-error: true
