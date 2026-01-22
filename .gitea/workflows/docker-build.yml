@@ -1,6 +1,7 @@
 # This workflow builds multiple Docker image variants for different OS versions and features
 # Multi-stage build: prep_base → prep_nginx/prep_apache2 → specific variants with imagick/phpdbg permutations
 # Images are pushed to Gitea registry and mirrored to GitHub Container Registry
+# Uses SlimToolkit to minimize image sizes
 
 name: Build Docker Images
 
@@ -47,26 +48,38 @@ jobs:
           username: ${{ secrets.GITHUB_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Ensure buildx cache directories
-        run: |
-          # Create all cache directories used by this workflow and make them writable
-          sudo mkdir -p /home/runner/.cache/buildx/{prep-base,prep-nginx,prep-apache,prep-nginx-imagick,prep-apache-imagick,variants-nginx,variants-apache2}
-          # Make writable by all to avoid permission issues when buildkit writes cache blobs
-          sudo chmod -R 0777 /home/runner/.cache/buildx || true
-      
-      - name: Build and push prep base image
+      - name: Build prep base image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile_prep_base
+          push: false
+          load: true
+          tags: prep_base:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=ubuntu:${{ matrix.version }}
+      
+      - name: Slim the image
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: prep_base:${{ matrix.version }}
+          tag: "slim-${{ matrix.version }}"
+      
+      - name: Create Dockerfile for slimmed image push
+        run: |
+          echo "FROM prep_base:slim-${{ matrix.version }}" > Dockerfile.slim
+      
+      - name: Push slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.slim
           push: true
           tags: |
             ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
             ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=ubuntu:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-base
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
   build-prep-nginx:
     needs: build-prep-base
@@ -80,12 +93,6 @@ jobs:
           - "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
@@ -105,19 +112,38 @@ jobs:
           username: ${{ secrets.GITHUB_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build and push prep_nginx image
+      - name: Build prep_nginx image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile_prep_nginx
+          push: false
+          load: true
+          tags: prep_nginx:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+      
+      - name: Slim the image
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: prep_nginx:${{ matrix.version }}
+          tag: "slim-${{ matrix.version }}"
+      
+      - name: Create Dockerfile for slimmed image push
+        run: |
+          echo "FROM prep_nginx:slim-${{ matrix.version }}" > Dockerfile.slim
+      
+      - name: Push slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.slim
           push: true
           tags: |
             ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
             ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-nginx
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-nginx,mode=max
 
   build-prep-apache:
     needs: build-prep-base
@@ -131,12 +157,6 @@ jobs:
           - "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
@@ -156,19 +176,38 @@ jobs:
           username: ${{ secrets.GITHUB_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build and push prep_apache2 image
+      - name: Build prep_apache2 image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile_prep_apache2
+          push: false
+          load: true
+          tags: prep_apache2:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+      
+      - name: Slim the image
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: prep_apache2:${{ matrix.version }}
+          tag: "slim-${{ matrix.version }}"
+      
+      - name: Create Dockerfile for slimmed image push
+        run: |
+          echo "FROM prep_apache2:slim-${{ matrix.version }}" > Dockerfile.slim
+      
+      - name: Push slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.slim
           push: true
           tags: |
             ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
             ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-apache
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-apache,mode=max
 
   build-prep-nginx-imagick:
     needs: build-prep-nginx
@@ -182,12 +221,6 @@ jobs:
           - "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
@@ -207,19 +240,38 @@ jobs:
           username: ${{ secrets.GITHUB_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build and push prep_nginx_imagick image
+      - name: Build prep_nginx_imagick image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile_prep_nginx_imagick
+          push: false
+          load: true
+          tags: prep_nginx_imagick:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
+      
+      - name: Slim the image
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: prep_nginx_imagick:${{ matrix.version }}
+          tag: "slim-${{ matrix.version }}"
+      
+      - name: Create Dockerfile for slimmed image push
+        run: |
+          echo "FROM prep_nginx_imagick:slim-${{ matrix.version }}" > Dockerfile.slim
+      
+      - name: Push slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.slim
           push: true
           tags: |
             ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
             ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-nginx-imagick
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-nginx-imagick,mode=max
 
   build-prep-apache-imagick:
     needs: [build-prep-apache, build-prep-nginx-imagick]
@@ -233,12 +285,6 @@ jobs:
           - "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
@@ -258,19 +304,38 @@ jobs:
           username: ${{ secrets.GITHUB_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build and push prep_apache2_imagick image
+      - name: Build prep_apache2_imagick image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile_prep_apache2_imagick
+          push: false
+          load: true
+          tags: prep_apache2_imagick:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
+      
+      - name: Slim the image
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: prep_apache2_imagick:${{ matrix.version }}
+          tag: "slim-${{ matrix.version }}"
+      
+      - name: Create Dockerfile for slimmed image push
+        run: |
+          echo "FROM prep_apache2_imagick:slim-${{ matrix.version }}" > Dockerfile.slim
+      
+      - name: Push slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.slim
           push: true
           tags: |
             ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
             ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-apache-imagick
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-apache-imagick,mode=max
 
   build-variants:
     needs: [build-prep-nginx-imagick, build-prep-apache-imagick]
@@ -302,12 +367,6 @@ jobs:
           - false
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
@@ -357,47 +416,64 @@ jobs:
             fi
           fi
           
+          LOCAL_TAG="${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           GITEA_TAG="${{ env.GITEA_IMAGE_PREFIX }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           GITHUB_TAG="${{ env.GITHUB_IMAGE_PREFIX }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           
+          echo "local_tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
           echo "gitea_tag=$GITEA_TAG" >> $GITHUB_OUTPUT
           echo "github_tag=$GITHUB_TAG" >> $GITHUB_OUTPUT
           echo "variant=$VARIANT" >> $GITHUB_OUTPUT
           echo "base_prep=$BASE_PREP" >> $GITHUB_OUTPUT
         shell: bash
       
-      - name: Build and push variant image
+      - name: Build variant image locally
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile_specific
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.gitea_tag }}
-            ${{ steps.meta.outputs.github_tag }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.local_tag }}
           build-args: |
             BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
             INSTALL_REDIS=${{ matrix.redis }}
             INSTALL_MEMCACHED=${{ matrix.memcached }}
             INSTALL_SSH2=${{ matrix.ssh2 }}
-            INSTALL_CRON=${{ matrix.cron }}            
-          cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
+            INSTALL_CRON=${{ matrix.cron }}
+      
+      - name: Slim the image
+        uses: kitabisa/docker-slim-action@v1
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: ${{ steps.meta.outputs.local_tag }}
+          tag: "slim"
+      
+      - name: Create Dockerfile for slimmed image push
+        run: |
+          LOCAL_TAG="${{ steps.meta.outputs.local_tag }}"
+          BASE_NAME="${LOCAL_TAG%%:*}"
+          echo "FROM ${BASE_NAME}:slim" > Dockerfile.slim
+      
+      - name: Push slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.slim
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.gitea_tag }}
+            ${{ steps.meta.outputs.github_tag }}
 
   cleanup-untagged:
     needs: build-variants
     runs-on: self-hosted
     if: github.event_name == 'push' || github.event_name == 'schedule'
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: 'npm'
-
       - name: Delete untagged images from Gitea registry
         run: |
-          # Add Gitea-specific cleanup logic here if needed
           echo "Gitea registry cleanup would go here"
       
       - name: Delete untagged images from GitHub registry
@@ -409,20 +485,17 @@ jobs:
             
             for (const packageName of packages) {
               try {
-                // Get all versions of the package
                 const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
                   package_type: 'container',
                   package_name: packageName,
                   org: context.repo.owner
                 });
                 
-                // Filter versions with no tags (untagged)
                 const untaggedVersions = versions.data.filter(version => {
                   const tags = version.metadata.container.tags;
                   return !tags || tags.length === 0;
                 });
                 
-                // Delete untagged versions
                 for (const version of untaggedVersions) {
                   console.log(`Deleting untagged version ${version.id} of package ${packageName}`);
                   try {
