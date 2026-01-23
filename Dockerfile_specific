@@ -52,24 +52,24 @@ RUN apt-get update && \
         ca-certificates \
         libxml2 \
         libsqlite3-0 \
-        libonig5 \
         libbz2-1.0 \
-        zlib1g \
-        libsodium23 \
-        libargon2-1 \
-        libgd3 && \
+        zlib1g && \
     # Dynamically detect package names for different Ubuntu versions (t64 transition)
     apt-get install -y --no-install-recommends \
         $(apt-cache search --names-only '^libssl3(t64)?$' | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libcurl4(t64)?$' | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libreadline8(t64)?$' | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libonig[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libonig5") \
+        $(apt-cache search --names-only '^libsodium[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libsodium23") \
+        $(apt-cache search --names-only '^libargon2-[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libargon2-1") \
         $(apt-cache search ^libzip[45]$ | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libpng16-16(t64)?$' | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | head -1) \
-        libjpeg8 \
-        libfreetype6 \
-        libwebp7 \
-        libxpm4 && \
+        $(apt-cache search --names-only '^libjpeg[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libjpeg8") \
+        $(apt-cache search --names-only '^libfreetype[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libfreetype6") \
+        $(apt-cache search --names-only '^libwebp[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libwebp7") \
+        $(apt-cache search --names-only '^libxpm[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libxpm4") \
+        $(apt-cache search --names-only '^libgd[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libgd3") && \
     rm -rf /var/lib/apt/lists/*
 
 # Install web server (nginx or apache2)
@@ -85,13 +85,16 @@ RUN apt-get update && \
 # Install optional runtime dependencies
 RUN apt-get update && \
     if [ "$INSTALL_IMAGICK" = "true" ]; then \
-        apt-get install -y --no-install-recommends imagemagick libmagickwand-6.q16-6; \
+        apt-get install -y --no-install-recommends imagemagick \
+            $(apt-cache search --names-only '^libmagickwand-[0-9]+-[0-9]+\.q16-[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libmagickwand-6.q16-6"); \
     fi && \
     if [ "$INSTALL_SSH2" = "true" ]; then \
-        apt-get install -y --no-install-recommends libssh2-1; \
+        apt-get install -y --no-install-recommends \
+            $(apt-cache search --names-only '^libssh2-[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libssh2-1"); \
     fi && \
     if [ "$INSTALL_MEMCACHED" = "true" ]; then \
-        apt-get install -y --no-install-recommends libmemcached11; \
+        apt-get install -y --no-install-recommends \
+            $(apt-cache search --names-only '^libmemcached[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libmemcached11"); \
     fi && \
     if [ "$INSTALL_CRON" = "true" ]; then \
         apt-get install -y --no-install-recommends cron; \
