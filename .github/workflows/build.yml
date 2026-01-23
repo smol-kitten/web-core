@@ -284,6 +284,8 @@ jobs:
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
             BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
+            UBUNTU_VERSION=${{ matrix.version }}
+            SERVER_TYPE=${{ matrix.server }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
             INSTALL_REDIS=${{ matrix.redis }}
             INSTALL_MEMCACHED=${{ matrix.memcached }}
@@ -291,25 +293,37 @@ jobs:
             INSTALL_CRON=${{ matrix.cron }}            
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
 
-  # Slim commonly used variants to reduce image size
+  # Slim all variants with SlimToolkit for further size reduction
   slim-variants:
     needs: build-variants
     runs-on: self-hosted
     if: github.event_name == 'push' || github.event_name == 'schedule'
     strategy:
       fail-fast: false
+      max-parallel: 8  # Increase parallelism for faster completion
       matrix:
         server:
           - nginx
           - apache2
         version:
-          - 24.04
-          - 25.04
-        # Only slim the most common variants
-        variant:
-          - ""  # base
-          - "-imagick"
-          - "-imagick-redis"
+          - "24.04"
+          - "25.04"
+          - "25.10"
+        imagick:
+          - true
+          - false
+        redis:
+          - true
+          - false
+        memcached:
+          - true
+          - false
+        ssh2:
+          - true
+          - false
+        cron:
+          - true
+          - false
     continue-on-error: true
     steps:
       - name: Log in to GitHub Container Registry
@@ -319,32 +333,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Pull image
+      - name: Build variant tag
+        id: tag
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${{ matrix.variant }}"
-          docker pull "$IMAGE"
-          echo "SOURCE_IMAGE=$IMAGE" >> $GITHUB_ENV
+          VARIANT=""
+          [ "${{ matrix.imagick }}" = "true" ] && VARIANT="${VARIANT}-imagick"
+          [ "${{ matrix.redis }}" = "true" ] && VARIANT="${VARIANT}-redis"
+          [ "${{ matrix.memcached }}" = "true" ] && VARIANT="${VARIANT}-memcached"
+          [ "${{ matrix.ssh2 }}" = "true" ] && VARIANT="${VARIANT}-ssh2"
+          [ "${{ matrix.cron }}" = "true" ] && VARIANT="${VARIANT}-cron"
+          echo "variant=$VARIANT" >> $GITHUB_OUTPUT
+          echo "image=ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}" >> $GITHUB_OUTPUT
       
-      - name: Slim image with SlimToolkit
-        uses: kitabisa/docker-slim-action@v1
-        id: slim
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: ${{ env.SOURCE_IMAGE }}
-          tag: slim
-      
-      - name: Tag and push slimmed image
+      - name: Pull and slim image
         run: |
-          SLIM_TAG="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${{ matrix.variant }}-slim"
-          docker tag "${{ env.SOURCE_IMAGE }}:slim" "$SLIM_TAG"
-          docker push "$SLIM_TAG"
-          echo "## SlimToolkit Report" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | ${{ matrix.server }}:${{ matrix.version }}${{ matrix.variant }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Original | ${{ steps.slim.outputs.original_size }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Slimmed | ${{ steps.slim.outputs.slim_size }} |" >> $GITHUB_STEP_SUMMARY
+          IMAGE="${{ steps.tag.outputs.image }}"
+          docker pull "$IMAGE" || exit 0
+          
+          # Use SlimToolkit CLI for optimal slimming
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            dslim/slim build \
+            --http-probe=false \
+            --target "$IMAGE" \
+            --tag "$IMAGE-slim" \
+            --continue-after 30 || echo "Slimming failed, skipping"
+          
+          # Push slimmed version if it exists
+          if docker image inspect "$IMAGE-slim" >/dev/null 2>&1; then
+            docker push "$IMAGE-slim"
+            
+            # Report size difference
+            ORIG_SIZE=$(docker image inspect "$IMAGE" --format='{{.Size}}' | awk '{printf "%.1fMB", $1/1024/1024}')
+            SLIM_SIZE=$(docker image inspect "$IMAGE-slim" --format='{{.Size}}' | awk '{printf "%.1fMB", $1/1024/1024}')
+            echo "## ${{ matrix.server }}:${{ matrix.version }}${{ steps.tag.outputs.variant }}" >> $GITHUB_STEP_SUMMARY
+            echo "Original: $ORIG_SIZE → Slimmed: $SLIM_SIZE" >> $GITHUB_STEP_SUMMARY
+          fi
 
   cleanup-untagged:
     needs: [build-variants, slim-variants]

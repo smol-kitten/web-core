@@ -1,12 +1,11 @@
+# Multi-stage build for optimized image size
+# Stage 1: Build extensions on full prep image
 ARG BASE_IMAGE=prep_nginx:24.04
-FROM ${BASE_IMAGE}
-
-# NOTE: Imagick is now installed in prep_nginx_imagick and prep_apache2_imagick
-# If INSTALL_IMAGICK=true, the workflow uses those prep images as BASE_IMAGE
-# This avoids 10+ minute PECL compilation for every variant
+ARG UBUNTU_VERSION=24.04
+ARG SERVER_TYPE=nginx
+FROM ${BASE_IMAGE} AS builder
 
 # Build args for optional extensions
-# Note: SQLite, MySQL/MySQLi/PDO MySQL are already built into PHP from source
 ARG INSTALL_IMAGICK=true
 ARG INSTALL_SSH2=false
 ARG INSTALL_REDIS=false
@@ -36,58 +35,86 @@ RUN if [ "$INSTALL_MEMCACHED" = "true" ]; then \
         echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini; \
     fi
 
-# Cron - Task scheduler for running periodic jobs
-RUN if [ "$INSTALL_CRON" = "true" ]; then \
-        apt-get update && \
-        apt-get install -y cron; \
-    fi
+# Stage 2: Clean runtime image
+ARG UBUNTU_VERSION
+ARG SERVER_TYPE
+FROM ubuntu:${UBUNTU_VERSION} AS runtime
 
-# Install and protect runtime libraries explicitly before cleanup
-# These are dependencies of dev packages that will be removed
+ARG INSTALL_IMAGICK=true
+ARG INSTALL_SSH2=false
+ARG INSTALL_MEMCACHED=false
+ARG INSTALL_CRON=false
+ARG SERVER_TYPE
+
+# Install only runtime dependencies (no build tools)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        libgd3 \
+        ca-certificates \
+        libxml2 \
+        libsqlite3-0 \
+        libonig5 \
+        libbz2-1.0 \
+        zlib1g \
+        libsodium23 \
+        libargon2-1 \
+        libgd3 && \
+    # Dynamically detect package names for different Ubuntu versions (t64 transition)
+    apt-get install -y --no-install-recommends \
+        $(apt-cache search --names-only '^libssl3(t64)?$' | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libcurl4(t64)?$' | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libreadline8(t64)?$' | awk '{print $1}' | head -1) \
+        $(apt-cache search ^libzip[45]$ | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libpng16-16(t64)?$' | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | head -1) \
-        $([ "$INSTALL_SSH2" = "true" ] && echo "libssh2-1" || echo "") \
-        $([ "$INSTALL_MEMCACHED" = "true" ] && echo "libmemcached11" || echo "") && \
-    apt-mark manual libgd3 2>/dev/null && \
-    apt-mark manual $(apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | head -1) 2>/dev/null && \
-    ([ "$INSTALL_SSH2" = "true" ] && apt-mark manual libssh2-1 2>/dev/null || true) && \
-    ([ "$INSTALL_MEMCACHED" = "true" ] && apt-mark manual libmemcached11 2>/dev/null || true) && \
+        libjpeg8 \
+        libfreetype6 \
+        libwebp7 \
+        libxpm4 && \
     rm -rf /var/lib/apt/lists/*
 
-# Cleanup: Remove build tools and dev packages to reduce image size
-RUN apt-get purge -y \
-        build-essential \
-        autoconf \
-        bison \
-        re2c \
-        pkg-config \
-        libxml2-dev \
-        libsqlite3-dev \
-        libssl-dev \
-        libcurl4-openssl-dev \
-        libonig-dev \
-        libreadline-dev \
-        libbz2-dev \
-        libzip-dev \
-        libpng-dev \
-        libjpeg-dev \
-        libfreetype6-dev \
-        libwebp-dev \
-        libxpm-dev \
-        zlib1g-dev \
-        libsodium-dev \
-        libargon2-dev \
-        libgd-dev \
-        libicu-dev \
-        libmagickwand-dev \
-        libssh2-1-dev \
-        libmemcached-dev \
-        wget 2>/dev/null || true && \
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* \
-           /usr/src/php-8.4.1 \
-           /tmp/* \
-           /var/tmp/*
+# Install web server (nginx or apache2)
+RUN apt-get update && \
+    if [ "$SERVER_TYPE" = "apache2" ]; then \
+        apt-get install -y --no-install-recommends apache2 && \
+        a2enmod proxy_fcgi setenvif rewrite; \
+    else \
+        apt-get install -y --no-install-recommends nginx; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install optional runtime dependencies
+RUN apt-get update && \
+    if [ "$INSTALL_IMAGICK" = "true" ]; then \
+        apt-get install -y --no-install-recommends imagemagick libmagickwand-6.q16-6; \
+    fi && \
+    if [ "$INSTALL_SSH2" = "true" ]; then \
+        apt-get install -y --no-install-recommends libssh2-1; \
+    fi && \
+    if [ "$INSTALL_MEMCACHED" = "true" ]; then \
+        apt-get install -y --no-install-recommends libmemcached11; \
+    fi && \
+    if [ "$INSTALL_CRON" = "true" ]; then \
+        apt-get install -y --no-install-recommends cron; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy compiled PHP from builder stage
+COPY --from=builder /usr/local/php8.4 /usr/local/php8.4
+COPY --from=builder /usr/local/bin/php /usr/local/bin/php
+COPY --from=builder /usr/local/bin/php-cgi /usr/local/bin/php-cgi
+COPY --from=builder /usr/local/bin/php-config /usr/local/bin/php-config
+COPY --from=builder /usr/local/bin/phpize /usr/local/bin/phpize
+COPY --from=builder /usr/local/bin/pecl /usr/local/bin/pecl
+COPY --from=builder /usr/local/bin/pear /usr/local/bin/pear
+COPY --from=builder /usr/local/bin/php-fpm /usr/local/bin/php-fpm
+
+# Copy server configurations from builder
+COPY --from=builder /etc/nginx /etc/nginx
+COPY --from=builder /etc/apache2 /etc/apache2
+
+# Create necessary directories and users
+RUN mkdir -p /var/www/html /var/run/php /var/log/php-fpm /run/nginx && \
+    useradd -r -s /sbin/nologin www-data 2>/dev/null || true && \
+    chown -R www-data:www-data /var/www/html /var/run/php /var/log/php-fpm
+
+WORKDIR /var/www/html
