@@ -112,7 +112,7 @@ PHP_FPM_PM_START_SERVERS=${PHP_FPM_PM_START_SERVERS:-5}
 PHP_FPM_PM_MIN_SPARE_SERVERS=${PHP_FPM_PM_MIN_SPARE_SERVERS:-5}
 PHP_FPM_PM_MAX_SPARE_SERVERS=${PHP_FPM_PM_MAX_SPARE_SERVERS:-10}
 
-echo "🐾 Configuring Apache + PHP-FPM with QUICK_SET=${QUICK_SET:-default}"
+echo " Configuring Apache + PHP-FPM with QUICK_SET=${QUICK_SET:-default}"
 
 # --- Configure PHP ---
 PHP_INI="/usr/local/php8.4/etc/php.ini"
@@ -193,7 +193,7 @@ if [ -f "$APACHE_CONF" ]; then
   fi
 fi
 
-echo "✅ Configuration applied:"
+echo "Configuration applied:"
 echo "   TZ: $TZ"
 echo "   WEB_PORT: $WEB_PORT"
 echo "   PHP Memory: $PHP_MEMORY_LIMIT | Execution: ${PHP_MAX_EXECUTION_TIME}s | Upload: $PHP_UPLOAD_MAX_FILESIZE"
@@ -205,23 +205,23 @@ echo "   Server tokens: $EXPOSE_SERVER_SOFTWARE"
 # If /docker-entrypoint-custom.sh exists, execute it before starting services
 # This allows users extending the image to add custom initialization without replacing the entire entrypoint
 if [ -f "/docker-entrypoint-custom.sh" ]; then
-  echo "🔧 Executing custom entrypoint hook: /docker-entrypoint-custom.sh"
+  echo "Executing custom entrypoint hook: /docker-entrypoint-custom.sh"
   /bin/bash /docker-entrypoint-custom.sh
 fi
 
 # Start services
-echo "🚀 Starting PHP-FPM..."
+echo "Starting PHP-FPM..."
 /usr/local/bin/php-fpm --fpm-config /usr/local/php8.4/etc/php-fpm.conf --daemonize
 
-echo "🚀 Starting Apache..."
+echo "Starting Apache..."
 service apache2 start
 
 # Start cron if installed
 if command -v cron >/dev/null 2>&1; then
-  echo "🕐 Starting Cron..."
+  echo "Starting Cron..."
   service cron start
 fi
 
 # Keep container running and stream logs
-echo "📋 Tailing logs..."
+echo "Tailing logs..."
 tail -f /var/log/apache2/access.log /var/log/apache2/error.log /var/log/php-fpm/error.log

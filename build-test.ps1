@@ -100,10 +100,35 @@ switch ($Version) {
 if (-not $SkipBuild -and -not $TestOnly) {
     Write-Step "Building prep images (this will take 10-15 minutes for PHP compilation)..."
     
-    foreach ($profile in $profiles) {
-        Write-Host "`n>> Building profile: $profile" -ForegroundColor Cyan
+    # Build images sequentially in dependency order
+    # docker compose build doesn't respect depends_on, so we build each service individually
+    $services2404 = @(
+        "prep-base-2404",
+        "prep-nginx-2404", 
+        "prep-apache-2404",
+        "prep-nginx-imagick-2404",
+        "prep-apache-imagick-2404"
+    )
+    
+    $services2504 = @(
+        "prep-base-2504",
+        "prep-nginx-2504",
+        "prep-apache-2504", 
+        "prep-nginx-imagick-2504",
+        "prep-apache-imagick-2504"
+    )
+    
+    $servicesToBuild = @()
+    switch ($Version) {
+        '24.04' { $servicesToBuild = $services2404 }
+        '25.04' { $servicesToBuild = $services2504 }
+        'all' { $servicesToBuild = $services2404 + $services2504 }
+    }
+    
+    foreach ($service in $servicesToBuild) {
+        Write-Host "`n>> Building service: $service" -ForegroundColor Cyan
         
-        $buildCmd = "docker compose -f $ComposeFile --profile $profile build"
+        $buildCmd = "docker compose -f $ComposeFile build $service"
         if ($ShowBuildOutput) {
             $buildCmd += " --progress=plain"
         }
@@ -112,9 +137,10 @@ if (-not $SkipBuild -and -not $TestOnly) {
         Invoke-Expression $buildCmd
         
         if ($LASTEXITCODE -ne 0) {
-            Write-Failure "Build failed for profile $profile"
+            Write-Failure "Build failed for service $service"
             exit 1
         }
+        Write-Success "Built $service"
     }
     
     Write-Success "All prep images built successfully"

@@ -118,4 +118,199 @@ RUN sed -i 's/;pid = run\/php-fpm.pid/pid = \/var\/run\/php\/php8.4-fpm.pid/' /u
     sed -i 's/;listen.group = www-data/listen.group = www-data/' /usr/local/php8.4/etc/php-fpm.d/www.conf && \
     sed -i 's/;listen.mode = 0660/listen.mode = 0660/' /usr/local/php8.4/etc/php-fpm.d/www.conf
 
+# Remove build dependencies and unnecessary packages
+# NOTE: Keep runtime libraries needed by PHP extensions
+# NOTE: Keep imagemagick/libmagick* as they are needed for imagick variants
+# NOTE: Keep gnupg/gpgv as apt depends on them
+# Use --ignore-missing to avoid failures on packages that don't exist
+RUN apt-get remove --ignore-missing -y \
+    build-essential \
+    autoconf \
+    bison \
+    re2c \
+    pkg-config \
+    gcc \
+    gcc-13 \
+    gcc-14 \
+    g++ \
+    g++-13 \
+    g++-14 \
+    cpp \
+    cpp-13 \
+    cpp-14 \
+    binutils \
+    binutils-common \
+    binutils-x86-64-linux-gnu \
+    make \
+    automake \
+    autotools-dev \
+    libtool \
+    libltdl-dev \
+    manpages-dev \
+    libxml2-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    libonig-dev \
+    libreadline-dev \
+    libbz2-dev \
+    libzip-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libjpeg8-dev \
+    libjpeg-turbo8-dev \
+    libfreetype-dev \
+    libwebp-dev \
+    libsharpyuv-dev \
+    libxpm-dev \
+    libgd-dev \
+    zlib1g-dev \
+    libsodium-dev \
+    libargon2-dev \
+    libicu-dev \
+    libc-dev-bin \
+    libc6-dev \
+    linux-libc-dev \
+    libcrypt-dev \
+    libexpat1-dev \
+    libfontconfig-dev \
+    libbrotli-dev \
+    libdeflate-dev \
+    libjbig-dev \
+    liblerc-dev \
+    libtiff-dev \
+    libzstd-dev \
+    liblzma-dev \
+    libncurses-dev \
+    uuid-dev \
+    xorg-sgml-doctools \
+    xtrans-dev \
+    libx11-dev \
+    libxau-dev \
+    libxcb1-dev \
+    libxdmcp-dev \
+    x11proto-dev \
+    fonts-dejavu-core \
+    fonts-dejavu-mono \
+    fontconfig-config \
+    dbus \
+    dbus-bin \
+    dbus-daemon \
+    dbus-session-bus-common \
+    dbus-system-bus-common \
+    dbus-user-session \
+    polkitd \
+    libpolkit-agent-1-0 \
+    libpolkit-gobject-1-0 \
+    packagekit \
+    packagekit-tools \
+    libpackagekit-glib2-18 \
+    gir1.2-packagekitglib-1.0 \
+    gir1.2-girepository-2.0 \
+    gir1.2-glib-2.0 \
+    libgirepository-1.0-1 \
+    python3-gi \
+    dmsetup \
+    libdevmapper1.02.1 \
+    libcryptsetup12 \
+    bzip2-doc \
+    sgml-base \
+    xml-core \
+    lto-disabled-list \
+    patch \
+    fakeroot \
+    libfakeroot \
+    dpkg-dev \
+    libdpkg-perl \
+    perl \
+    perl-modules-5.38 \
+    libperl5.38t64 \
+    libalgorithm-diff-perl \
+    libalgorithm-diff-xs-perl \
+    libalgorithm-merge-perl \
+    libfile-fcntllock-perl \
+    liblocale-gettext-perl \
+    python3-blinker \
+    python3-cffi-backend \
+    python3-cryptography \
+    python3-dbus \
+    python3-distro \
+    python3-distro-info \
+    python3-httplib2 \
+    python3-jwt \
+    python3-launchpadlib \
+    python3-lazr.restfulclient \
+    python3-lazr.uri \
+    python3-oauthlib \
+    python3-pkg-resources \
+    python3-pyparsing \
+    python3-software-properties \
+    python3-wadllib \
+    networkd-dispatcher \
+    software-properties-common \
+    shared-mime-info \
+    appstream \
+    libappstream5 \
+    libxmlb2 \
+    iso-codes \
+    publicsuffix \
+    unattended-upgrades \
+    libstemmer0d \
+    libduktape207 \
+    icu-devtools && \
+    apt-get autoremove -y && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libreadline8t64 \
+        libsqlite3-0 \
+        libxml2 \
+        libcurl4t64 \
+        libonig5 \
+        libbz2-1.0 \
+        libzip4t64 \
+        libpng16-16t64 \
+        libjpeg8 \
+        libfreetype6 \
+        libwebp7 \
+        libgd3 \
+        libsodium23 \
+        libargon2-1 \
+        libicu74 \
+        libssl3t64 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /usr/src/php-8.4.1  
+
+# Slim down the image size by stripping binaries
+RUN strip --strip-all /usr/local/php8.4/bin/* /usr/local/php8.4/sbin/* /usr/local/php8.4/lib/php/extensions/no-debug-non-zts-20210902/*.so 2>/dev/null || true
+
+# Slim down the image size by removing unneeded files
+RUN find /usr/local/php8.4/ -type f \( -name '*.a' -o -name '*.la' \) -delete
+
+# Remove source code directories
+RUN rm -rf /usr/src
+
+# Slim down the image size by removing documentation files
+RUN find /usr/local/php8.4/ -type f \( -name 'README*' -o -name 'CHANGELOG*' -o -name 'UPGRADING*' -o -name 'NEWS*' \) -delete
+
+# Remove man pages to save space
+RUN rm -rf /usr/local/php8.4/share/man /usr/share/man /usr/local/share/man
+
+# Additional cleanup - remove package cache and temporary files
+RUN rm -rf /var/cache/apt/* \
+    /var/lib/apt/lists/* \
+    /tmp/* \
+    /var/tmp/* \
+    /var/cache/debconf/* \
+    /var/log/* \
+    /usr/share/doc/* \
+    /usr/share/info/* \
+    /usr/share/locale/* \
+    /usr/share/pixmaps/* \
+    /usr/share/icons/* \
+    /usr/share/applications/* \
+    2>/dev/null || true
+
+# Recreate necessary runtime directories after cleanup
+RUN mkdir -p /var/log/php-fpm /var/run/php
+
 WORKDIR /
