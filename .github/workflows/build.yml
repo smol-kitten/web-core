@@ -291,10 +291,65 @@ jobs:
             INSTALL_CRON=${{ matrix.cron }}            
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
 
-  cleanup-untagged:
+  # Slim commonly used variants to reduce image size
+  slim-variants:
     needs: build-variants
     runs-on: self-hosted
     if: github.event_name == 'push' || github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        server:
+          - nginx
+          - apache2
+        version:
+          - 24.04
+          - 25.04
+        # Only slim the most common variants
+        variant:
+          - ""  # base
+          - "-imagick"
+          - "-imagick-redis"
+    continue-on-error: true
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Pull image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${{ matrix.variant }}"
+          docker pull "$IMAGE"
+          echo "SOURCE_IMAGE=$IMAGE" >> $GITHUB_ENV
+      
+      - name: Slim image with SlimToolkit
+        uses: kitabisa/docker-slim-action@v1
+        id: slim
+        env:
+          DSLIM_HTTP_PROBE: false
+        with:
+          target: ${{ env.SOURCE_IMAGE }}
+          tag: slim
+      
+      - name: Tag and push slimmed image
+        run: |
+          SLIM_TAG="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${{ matrix.variant }}-slim"
+          docker tag "${{ env.SOURCE_IMAGE }}:slim" "$SLIM_TAG"
+          docker push "$SLIM_TAG"
+          echo "## SlimToolkit Report" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | ${{ matrix.server }}:${{ matrix.version }}${{ matrix.variant }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Original | ${{ steps.slim.outputs.original_size }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slimmed | ${{ steps.slim.outputs.slim_size }} |" >> $GITHUB_STEP_SUMMARY
+
+  cleanup-untagged:
+    needs: [build-variants, slim-variants]
+    runs-on: self-hosted
+    if: always() && (github.event_name == 'push' || github.event_name == 'schedule')
     steps:
       - name: Delete untagged images from registry
         uses: actions/github-script@v7
