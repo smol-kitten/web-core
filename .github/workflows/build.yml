@@ -1,5 +1,6 @@
-# This workflow builds multiple Docker image variants for different OS versions and features
-# Multi-stage build: prep_base → prep_nginx/prep_apache2 → specific variants with imagick/phpdbg permutations
+# Simplified 2-stage build pipeline:
+# 1. Build and push builder images (prep_base) with compiled PHP + all extensions
+# 2. Build and push runtime variants (small images using multi-stage COPY from builder)
 
 name: Build Docker Images
 
@@ -10,7 +11,7 @@ on:
     - cron: '0 2 * * 0'  # Weekly on Sundays at 02:00 UTC
 
 jobs:
-  build-prep-base:
+  build-builder:
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -35,12 +36,10 @@ jobs:
       
       - name: Ensure buildx cache directories
         run: |
-          # Create all cache directories used by this workflow and make them writable
-          sudo mkdir -p /home/runner/.cache/buildx/{prep-base,prep-nginx,prep-apache,prep-nginx-imagick,prep-apache-imagick,variants-nginx,variants-apache2}
-          # Make writable by all to avoid permission issues when buildkit writes cache blobs
+          sudo mkdir -p /home/runner/.cache/buildx/prep-base
           sudo chmod -R 0777 /home/runner/.cache/buildx || true
       
-      - name: Build and push prep base image
+      - name: Build and push builder image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -52,152 +51,8 @@ jobs:
           cache-from: type=local,src=/home/runner/.cache/buildx/prep-base
           cache-to: type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
-  build-prep-nginx:
-    needs: build-prep-base
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push prep_nginx image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_nginx
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/prep_nginx:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-nginx
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-nginx,mode=max
-
-  build-prep-apache:
-    needs: build-prep-base
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push prep_apache2 image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_apache2
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/prep_apache2:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-apache
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-apache,mode=max
-
-  build-prep-nginx-imagick:
-    needs: build-prep-nginx
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push prep_nginx_imagick image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_nginx_imagick
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/prep_nginx_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_nginx:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-nginx-imagick
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-nginx-imagick,mode=max
-
-  build-prep-apache-imagick:
-    needs: [build-prep-apache, build-prep-nginx-imagick]
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build and push prep_apache2_imagick image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_apache2_imagick
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/prep_apache2_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_apache2:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/prep-apache-imagick
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-apache-imagick,mode=max
-
   build-variants:
-    needs: [build-prep-nginx-imagick, build-prep-apache-imagick]
+    needs: build-builder
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -241,38 +96,17 @@ jobs:
       - name: Set image metadata
         id: meta
         run: |
-          # Build variant suffix from all extensions
           VARIANT=""
-          PARTS=""
-          
-          [ "${{ matrix.imagick }}" = "true" ] && PARTS="${PARTS}-imagick"
-          [ "${{ matrix.redis }}" = "true" ] && PARTS="${PARTS}-redis"
-          [ "${{ matrix.memcached }}" = "true" ] && PARTS="${PARTS}-memcached"
-          [ "${{ matrix.ssh2 }}" = "true" ] && PARTS="${PARTS}-ssh2"
-          [ "${{ matrix.cron }}" = "true" ] && PARTS="${PARTS}-cron"
-          
-          VARIANT="${PARTS}"
-          
-          # Determine base image based on server type and imagick requirement
-          if [ "${{ matrix.server }}" = "apache2" ]; then
-            if [ "${{ matrix.imagick }}" = "true" ]; then
-              BASE_PREP="prep_apache2_imagick"
-            else
-              BASE_PREP="prep_apache2"
-            fi
-          else
-            if [ "${{ matrix.imagick }}" = "true" ]; then
-              BASE_PREP="prep_nginx_imagick"
-            else
-              BASE_PREP="prep_nginx"
-            fi
-          fi
+          [ "${{ matrix.imagick }}" = "true" ] && VARIANT="${VARIANT}-imagick"
+          [ "${{ matrix.redis }}" = "true" ] && VARIANT="${VARIANT}-redis"
+          [ "${{ matrix.memcached }}" = "true" ] && VARIANT="${VARIANT}-memcached"
+          [ "${{ matrix.ssh2 }}" = "true" ] && VARIANT="${VARIANT}-ssh2"
+          [ "${{ matrix.cron }}" = "true" ] && VARIANT="${VARIANT}-cron"
           
           IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "variant=$VARIANT" >> $GITHUB_OUTPUT
-          echo "base_prep=$BASE_PREP" >> $GITHUB_OUTPUT
         shell: bash
       
       - name: Build and push variant image
@@ -283,94 +117,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
+            BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
             UBUNTU_VERSION=${{ matrix.version }}
             SERVER_TYPE=${{ matrix.server }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
             INSTALL_REDIS=${{ matrix.redis }}
             INSTALL_MEMCACHED=${{ matrix.memcached }}
             INSTALL_SSH2=${{ matrix.ssh2 }}
-            INSTALL_CRON=${{ matrix.cron }}            
+            INSTALL_CRON=${{ matrix.cron }}
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
 
-  # Slim all variants with SlimToolkit for further size reduction
-  slim-variants:
-    needs: build-variants
-    runs-on: self-hosted
-    if: github.event_name == 'push' || github.event_name == 'schedule'
-    strategy:
-      fail-fast: false
-      max-parallel: 8  # Increase parallelism for faster completion
-      matrix:
-        server:
-          - nginx
-          - apache2
-        version:
-          - "24.04"
-          - "25.04"
-          - "25.10"
-        imagick:
-          - true
-          - false
-        redis:
-          - true
-          - false
-        memcached:
-          - true
-          - false
-        ssh2:
-          - true
-          - false
-        cron:
-          - true
-          - false
-    continue-on-error: true
-    steps:
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build variant tag
-        id: tag
-        run: |
-          VARIANT=""
-          [ "${{ matrix.imagick }}" = "true" ] && VARIANT="${VARIANT}-imagick"
-          [ "${{ matrix.redis }}" = "true" ] && VARIANT="${VARIANT}-redis"
-          [ "${{ matrix.memcached }}" = "true" ] && VARIANT="${VARIANT}-memcached"
-          [ "${{ matrix.ssh2 }}" = "true" ] && VARIANT="${VARIANT}-ssh2"
-          [ "${{ matrix.cron }}" = "true" ] && VARIANT="${VARIANT}-cron"
-          echo "variant=$VARIANT" >> $GITHUB_OUTPUT
-          echo "image=ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}" >> $GITHUB_OUTPUT
-      
-      - name: Pull and slim image
-        run: |
-          IMAGE="${{ steps.tag.outputs.image }}"
-          docker pull "$IMAGE" || exit 0
-          
-          # Use SlimToolkit CLI for optimal slimming
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            dslim/slim build \
-            --http-probe=false \
-            --target "$IMAGE" \
-            --tag "$IMAGE-slim" \
-            --continue-after 30 || echo "Slimming failed, skipping"
-          
-          # Push slimmed version if it exists
-          if docker image inspect "$IMAGE-slim" >/dev/null 2>&1; then
-            docker push "$IMAGE-slim"
-            
-            # Report size difference
-            ORIG_SIZE=$(docker image inspect "$IMAGE" --format='{{.Size}}' | awk '{printf "%.1fMB", $1/1024/1024}')
-            SLIM_SIZE=$(docker image inspect "$IMAGE-slim" --format='{{.Size}}' | awk '{printf "%.1fMB", $1/1024/1024}')
-            echo "## ${{ matrix.server }}:${{ matrix.version }}${{ steps.tag.outputs.variant }}" >> $GITHUB_STEP_SUMMARY
-            echo "Original: $ORIG_SIZE → Slimmed: $SLIM_SIZE" >> $GITHUB_STEP_SUMMARY
-          fi
-
   cleanup-untagged:
-    needs: [build-variants, slim-variants]
+    needs: build-variants
     runs-on: self-hosted
     if: always() && (github.event_name == 'push' || github.event_name == 'schedule')
     steps:
@@ -379,24 +137,21 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const packages = ['nginx', 'apache2', 'prep_base', 'prep_nginx', 'prep_apache2', 'prep_nginx_imagick', 'prep_apache2_imagick'];
+            const packages = ['nginx', 'apache2', 'prep_base'];
             
             for (const packageName of packages) {
               try {
-                // Get all versions of the package
                 const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
                   package_type: 'container',
                   package_name: packageName,
                   org: context.repo.owner
                 });
                 
-                // Filter versions with no tags (untagged)
                 const untaggedVersions = versions.data.filter(version => {
                   const tags = version.metadata.container.tags;
                   return !tags || tags.length === 0;
                 });
                 
-                // Delete untagged versions
                 for (const version of untaggedVersions) {
                   console.log(`Deleting untagged version ${version.id} of package ${packageName}`);
                   try {

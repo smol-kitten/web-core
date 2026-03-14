@@ -1,7 +1,6 @@
-# This workflow builds multiple Docker image variants for different OS versions and features
-# Multi-stage build: prep_base → prep_nginx/prep_apache2 → specific variants with imagick/phpdbg permutations
-# Images are pushed to Gitea registry and mirrored to GitHub Container Registry
-# Uses SlimToolkit to minimize image sizes
+# Simplified 2-stage build pipeline for Gitea + GitHub dual-registry
+# 1. Build and push builder images (prep_base)
+# 2. Build and push runtime variants
 
 name: Build Docker Images
 
@@ -9,7 +8,7 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 2 * * 0'  # Weekly on Sundays at 02:00 UTC
+    - cron: '0 2 * * 0'
 
 env:
   GITEA_REGISTRY: git.catboy.systems
@@ -18,7 +17,7 @@ env:
   GITHUB_IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
 
 jobs:
-  build-prep-base:
+  build-builder:
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -48,18 +47,7 @@ jobs:
           username: ${{ secrets.GITHUB_USER }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build prep base image locally
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_base
-          push: false
-          load: true
-          tags: prep_base:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=ubuntu:${{ matrix.version }}
-      
-      - name: Push non-slimmed image to both registries
+      - name: Build and push builder image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -70,310 +58,9 @@ jobs:
             ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
           build-args: |
             BASE_IMAGE=ubuntu:${{ matrix.version }}
-      
-      - name: Slim the image
-        uses: kitabisa/docker-slim-action@v1
-        continue-on-error: true
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: prep_base:${{ matrix.version }}
-          tag: "slim-${{ matrix.version }}"
-      
-      - name: Push slimmed image
-        continue-on-error: true
-        run: |
-          docker tag prep_base:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
-          docker tag prep_base:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
-          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
-          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
-
-  build-prep-nginx:
-    needs: build-prep-base
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Gitea Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITEA_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITHUB_REGISTRY }}
-          username: ${{ secrets.GITHUB_USER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build prep_nginx image locally
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_nginx
-          push: false
-          load: true
-          tags: prep_nginx:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-      
-      - name: Push non-slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_nginx
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-      
-      - name: Slim the image
-        uses: kitabisa/docker-slim-action@v1
-        continue-on-error: true
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: prep_nginx:${{ matrix.version }}
-          tag: "slim-${{ matrix.version }}"
-      
-      - name: Push slimmed image
-        continue-on-error: true
-        run: |
-          docker tag prep_nginx:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
-          docker tag prep_nginx:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
-          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
-          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
-
-  build-prep-apache:
-    needs: build-prep-base
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Gitea Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITEA_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITHUB_REGISTRY }}
-          username: ${{ secrets.GITHUB_USER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build prep_apache2 image locally
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_apache2
-          push: false
-          load: true
-          tags: prep_apache2:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-      
-      - name: Push non-slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_apache2
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-      
-      - name: Slim the image
-        uses: kitabisa/docker-slim-action@v1
-        continue-on-error: true
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: prep_apache2:${{ matrix.version }}
-          tag: "slim-${{ matrix.version }}"
-      
-      - name: Push slimmed image
-        continue-on-error: true
-        run: |
-          docker tag prep_apache2:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
-          docker tag prep_apache2:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
-          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
-          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
-
-  build-prep-nginx-imagick:
-    needs: build-prep-nginx
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Gitea Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITEA_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITHUB_REGISTRY }}
-          username: ${{ secrets.GITHUB_USER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build prep_nginx_imagick image locally
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_nginx_imagick
-          push: false
-          load: true
-          tags: prep_nginx_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-      
-      - name: Push non-slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_nginx_imagick
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-      
-      - name: Slim the image
-        uses: kitabisa/docker-slim-action@v1
-        continue-on-error: true
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: prep_nginx_imagick:${{ matrix.version }}
-          tag: "slim-${{ matrix.version }}"
-      
-      - name: Push slimmed image
-        continue-on-error: true
-        run: |
-          docker tag prep_nginx_imagick:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
-          docker tag prep_nginx_imagick:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
-          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
-          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
-
-  build-prep-apache-imagick:
-    needs: [build-prep-apache, build-prep-nginx-imagick]
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-    continue-on-error: ${{ matrix.version == '25.10' }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Log in to Gitea Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITEA_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITEA_TOKEN }}
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.GITHUB_REGISTRY }}
-          username: ${{ secrets.GITHUB_USER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Build prep_apache2_imagick image locally
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_apache2_imagick
-          push: false
-          load: true
-          tags: prep_apache2_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-      
-      - name: Push non-slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_prep_apache2_imagick
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-      
-      - name: Slim the image
-        uses: kitabisa/docker-slim-action@v1
-        continue-on-error: true
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: prep_apache2_imagick:${{ matrix.version }}
-          tag: "slim-${{ matrix.version }}"
-      
-      - name: Push slimmed image
-        continue-on-error: true
-        run: |
-          docker tag prep_apache2_imagick:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
-          docker tag prep_apache2_imagick:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
-          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
-          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
 
   build-variants:
-    needs: [build-prep-nginx-imagick, build-prep-apache-imagick]
+    needs: build-builder
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -424,63 +111,22 @@ jobs:
       - name: Set image metadata
         id: meta
         run: |
-          # Build variant suffix from all extensions
           VARIANT=""
-          PARTS=""
+          [ "${{ matrix.imagick }}" = "true" ] && VARIANT="${VARIANT}-imagick"
+          [ "${{ matrix.redis }}" = "true" ] && VARIANT="${VARIANT}-redis"
+          [ "${{ matrix.memcached }}" = "true" ] && VARIANT="${VARIANT}-memcached"
+          [ "${{ matrix.ssh2 }}" = "true" ] && VARIANT="${VARIANT}-ssh2"
+          [ "${{ matrix.cron }}" = "true" ] && VARIANT="${VARIANT}-cron"
           
-          [ "${{ matrix.imagick }}" = "true" ] && PARTS="${PARTS}-imagick"
-          [ "${{ matrix.redis }}" = "true" ] && PARTS="${PARTS}-redis"
-          [ "${{ matrix.memcached }}" = "true" ] && PARTS="${PARTS}-memcached"
-          [ "${{ matrix.ssh2 }}" = "true" ] && PARTS="${PARTS}-ssh2"
-          [ "${{ matrix.cron }}" = "true" ] && PARTS="${PARTS}-cron"
-          
-          VARIANT="${PARTS}"
-          
-          # Determine base image based on server type and imagick requirement
-          if [ "${{ matrix.server }}" = "apache2" ]; then
-            if [ "${{ matrix.imagick }}" = "true" ]; then
-              BASE_PREP="prep_apache2_imagick"
-            else
-              BASE_PREP="prep_apache2"
-            fi
-          else
-            if [ "${{ matrix.imagick }}" = "true" ]; then
-              BASE_PREP="prep_nginx_imagick"
-            else
-              BASE_PREP="prep_nginx"
-            fi
-          fi
-          
-          LOCAL_TAG="${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           GITEA_TAG="${{ env.GITEA_IMAGE_PREFIX }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           GITHUB_TAG="${{ env.GITHUB_IMAGE_PREFIX }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
           
-          echo "local_tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
           echo "gitea_tag=$GITEA_TAG" >> $GITHUB_OUTPUT
           echo "github_tag=$GITHUB_TAG" >> $GITHUB_OUTPUT
           echo "variant=$VARIANT" >> $GITHUB_OUTPUT
-          echo "base_prep=$BASE_PREP" >> $GITHUB_OUTPUT
         shell: bash
       
-      - name: Build variant image locally
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile_specific
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.local_tag }}
-          build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
-            UBUNTU_VERSION=${{ matrix.version }}
-            SERVER_TYPE=${{ matrix.server }}
-            INSTALL_IMAGICK=${{ matrix.imagick }}
-            INSTALL_REDIS=${{ matrix.redis }}
-            INSTALL_MEMCACHED=${{ matrix.memcached }}
-            INSTALL_SSH2=${{ matrix.ssh2 }}
-            INSTALL_CRON=${{ matrix.cron }}
-      
-      - name: Push non-slimmed image to both registries
+      - name: Build and push variant image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -490,7 +136,7 @@ jobs:
             ${{ steps.meta.outputs.gitea_tag }}
             ${{ steps.meta.outputs.github_tag }}
           build-args: |
-            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
+            BUILDER_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
             UBUNTU_VERSION=${{ matrix.version }}
             SERVER_TYPE=${{ matrix.server }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
@@ -498,81 +144,3 @@ jobs:
             INSTALL_MEMCACHED=${{ matrix.memcached }}
             INSTALL_SSH2=${{ matrix.ssh2 }}
             INSTALL_CRON=${{ matrix.cron }}
-      
-      - name: Slim the image
-        uses: kitabisa/docker-slim-action@v1
-        continue-on-error: true
-        env:
-          DSLIM_HTTP_PROBE: false
-        with:
-          target: ${{ steps.meta.outputs.local_tag }}
-          tag: "slim"
-      
-      - name: Create Dockerfile for slimmed image push
-        continue-on-error: true
-        run: |
-          LOCAL_TAG="${{ steps.meta.outputs.local_tag }}"
-          BASE_NAME="${LOCAL_TAG%%:*}"
-          echo "FROM ${BASE_NAME}:slim" > Dockerfile.slim
-      
-      - name: Push slimmed image to both registries
-        continue-on-error: true
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.slim
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.gitea_tag }}-slim
-            ${{ steps.meta.outputs.github_tag }}-slim
-
-  cleanup-untagged:
-    needs: build-variants
-    runs-on: self-hosted
-    if: github.event_name == 'push' || github.event_name == 'schedule'
-    steps:
-      - name: Delete untagged images from Gitea registry
-        run: |
-          echo "Gitea registry cleanup would go here"
-      
-      - name: Delete untagged images from GitHub registry
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const packages = ['nginx', 'apache2', 'prep_base', 'prep_nginx', 'prep_apache2', 'prep_nginx_imagick', 'prep_apache2_imagick'];
-            
-            for (const packageName of packages) {
-              try {
-                const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
-                  package_type: 'container',
-                  package_name: packageName,
-                  org: context.repo.owner
-                });
-                
-                const untaggedVersions = versions.data.filter(version => {
-                  const tags = version.metadata.container.tags;
-                  return !tags || tags.length === 0;
-                });
-                
-                for (const version of untaggedVersions) {
-                  console.log(`Deleting untagged version ${version.id} of package ${packageName}`);
-                  try {
-                    await github.rest.packages.deletePackageVersionForOrg({
-                      package_type: 'container',
-                      package_name: packageName,
-                      org: context.repo.owner,
-                      package_version_id: version.id
-                    });
-                    console.log(`  ✅ Deleted successfully`);
-                  } catch (deleteError) {
-                    console.log(`  ⚠️  Failed to delete: ${deleteError.message}`);
-                  }
-                }
-                
-                console.log(`✅ Cleaned up ${untaggedVersions.length} untagged versions from ${packageName}`);
-              } catch (error) {
-                console.log(`⚠️  Error cleaning up ${packageName}: ${error.message}`);
-              }
-            }
-            console.log(`\n🎉 Cleanup complete!`);

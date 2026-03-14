@@ -1,50 +1,26 @@
-# Multi-stage build for optimized image size
-# Stage 1: Build extensions on full prep image
-ARG BASE_IMAGE=prep_nginx:24.04
-ARG UBUNTU_VERSION=24.04
-ARG SERVER_TYPE=nginx
-FROM ${BASE_IMAGE} AS builder
+# Runtime Image for PHP Web Applications
+# Uses pre-built builder image (prep_base) and creates a clean runtime
+# with only the necessary runtime dependencies, web server, and PHP binaries.
+#
+# Build args:
+#   BUILDER_IMAGE - The prep_base builder image with compiled PHP
+#   UBUNTU_VERSION - Ubuntu version for the runtime base
+#   SERVER_TYPE - "nginx" or "apache2"
+#   INSTALL_IMAGICK, INSTALL_SSH2, INSTALL_REDIS, INSTALL_MEMCACHED, INSTALL_CRON
 
-# Build args for optional extensions
+ARG BUILDER_IMAGE=ghcr.io/smol-kitten/prep_base:24.04
+FROM ${BUILDER_IMAGE} AS builder
+
+# --- Clean Runtime Image ---
+ARG UBUNTU_VERSION=24.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+ARG SERVER_TYPE=nginx
 ARG INSTALL_IMAGICK=true
 ARG INSTALL_SSH2=false
 ARG INSTALL_REDIS=false
 ARG INSTALL_MEMCACHED=false
 ARG INSTALL_CRON=false
-
-# Install optional extensions via PECL
-# SSH2 - SSH protocol support
-RUN if [ "$INSTALL_SSH2" = "true" ]; then \
-        apt-get update && \
-        apt-get install -y libssh2-1-dev && \
-        pecl install ssh2-1.4.1 && \
-        echo "extension=ssh2.so" > /usr/local/php8.4/etc/conf.d/20-ssh2.ini; \
-    fi
-
-# Redis - In-memory data structure store client
-RUN if [ "$INSTALL_REDIS" = "true" ]; then \
-        pecl install redis && \
-        echo "extension=redis.so" > /usr/local/php8.4/etc/conf.d/20-redis.ini; \
-    fi
-
-# Memcached - Distributed memory caching system client
-RUN if [ "$INSTALL_MEMCACHED" = "true" ]; then \
-        apt-get update && \
-        apt-get install -y libmemcached-dev zlib1g-dev && \
-        pecl install memcached && \
-        echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini; \
-    fi
-
-# Stage 2: Clean runtime image
-ARG UBUNTU_VERSION
-ARG SERVER_TYPE
-FROM ubuntu:${UBUNTU_VERSION} AS runtime
-
-ARG INSTALL_IMAGICK=true
-ARG INSTALL_SSH2=false
-ARG INSTALL_MEMCACHED=false
-ARG INSTALL_CRON=false
-ARG SERVER_TYPE
 
 # Install only runtime dependencies (no build tools)
 RUN apt-get update && \
@@ -72,7 +48,7 @@ RUN apt-get update && \
         $(apt-cache search --names-only '^libgd[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libgd3") && \
     rm -rf /var/lib/apt/lists/*
 
-# Install web server (nginx or apache2)
+# Install web server
 RUN apt-get update && \
     if [ "$SERVER_TYPE" = "apache2" ]; then \
         apt-get install -y --no-install-recommends apache2 && \
@@ -101,23 +77,56 @@ RUN apt-get update && \
     fi && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy compiled PHP from builder stage
+# Copy compiled PHP from builder (all extensions pre-compiled)
 COPY --from=builder /usr/local/php8.4 /usr/local/php8.4
-COPY --from=builder /usr/local/bin/php /usr/local/bin/php
-COPY --from=builder /usr/local/bin/php-cgi /usr/local/bin/php-cgi
-COPY --from=builder /usr/local/bin/php-config /usr/local/bin/php-config
-COPY --from=builder /usr/local/bin/phpize /usr/local/bin/phpize
-COPY --from=builder /usr/local/bin/pecl /usr/local/bin/pecl
-COPY --from=builder /usr/local/bin/pear /usr/local/bin/pear
-COPY --from=builder /usr/local/bin/php-fpm /usr/local/bin/php-fpm
 
-# Copy server configurations from builder
-COPY --from=builder /etc/nginx /etc/nginx
-COPY --from=builder /etc/apache2 /etc/apache2
+# Create symlinks for PHP binaries
+RUN ln -sf /usr/local/php8.4/bin/php /usr/local/bin/php && \
+    ln -sf /usr/local/php8.4/bin/php-cgi /usr/local/bin/php-cgi && \
+    ln -sf /usr/local/php8.4/bin/php-config /usr/local/bin/php-config && \
+    ln -sf /usr/local/php8.4/bin/phpize /usr/local/bin/phpize && \
+    ln -sf /usr/local/php8.4/bin/pecl /usr/local/bin/pecl && \
+    ln -sf /usr/local/php8.4/bin/pear /usr/local/bin/pear && \
+    ln -sf /usr/local/php8.4/sbin/php-fpm /usr/local/bin/php-fpm
+
+# Disable unused extensions (remove .ini files for extensions not requested)
+RUN if [ "$INSTALL_IMAGICK" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-imagick.ini; fi && \
+    if [ "$INSTALL_SSH2" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-ssh2.ini; fi && \
+    if [ "$INSTALL_REDIS" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-redis.ini; fi && \
+    if [ "$INSTALL_MEMCACHED" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-memcached.ini; fi
 
 # Create necessary directories and users
 RUN mkdir -p /var/www/html /var/run/php /var/log/php-fpm /run/nginx && \
     useradd -r -s /sbin/nologin www-data 2>/dev/null || true && \
     chown -R www-data:www-data /var/www/html /var/run/php /var/log/php-fpm
 
+# Copy web server configs, entrypoint, and test page
+COPY src/nginx/nginx.conf /tmp/nginx/nginx.conf
+COPY src/nginx/site.conf /tmp/nginx/site.conf
+COPY src/apache/000-default.conf /tmp/apache/000-default.conf
+COPY src/docker-entrypoint-nginx.sh /tmp/entrypoint-nginx.sh
+COPY src/docker-entrypoint-apache.sh /tmp/entrypoint-apache.sh
+COPY src/index.php /var/www/html/index.php
+
+# Configure web server based on SERVER_TYPE
+RUN if [ "$SERVER_TYPE" = "apache2" ]; then \
+        mkdir -p /etc/apache2/sites-enabled && \
+        cp /tmp/apache/000-default.conf /etc/apache2/sites-enabled/000-default.conf && \
+        printf '<FilesMatch \\.php$>\n    SetHandler "proxy:unix:/var/run/php/php8.4-fpm.sock|fcgi://localhost"\n</FilesMatch>\n' \
+            > /etc/apache2/conf-available/php8.4-fpm.conf && \
+        a2enconf php8.4-fpm && \
+        rm -f /var/www/html/index.html && \
+        cp /tmp/entrypoint-apache.sh /docker-entrypoint.sh; \
+    else \
+        mkdir -p /etc/nginx/sites-enabled && \
+        cp /tmp/nginx/nginx.conf /etc/nginx/nginx.conf && \
+        cp /tmp/nginx/site.conf /etc/nginx/sites-enabled/nginx.conf && \
+        rm -f /var/www/html/index.nginx-debian.html && \
+        cp /tmp/entrypoint-nginx.sh /docker-entrypoint.sh; \
+    fi && \
+    chmod +x /docker-entrypoint.sh && \
+    rm -rf /tmp/nginx /tmp/apache /tmp/entrypoint-*.sh
+
 WORKDIR /var/www/html
+
+CMD ["/docker-entrypoint.sh"]

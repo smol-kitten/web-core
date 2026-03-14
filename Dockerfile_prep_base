@@ -1,13 +1,16 @@
+# PHP Builder Image
+# Compiles PHP 8.4 from source with all extensions pre-built.
+# This image is pushed to the registry for caching and used as a
+# builder stage in Dockerfile_specific (the runtime image).
+#
+# Extensions compiled: imagick, ssh2, redis, memcached
+# Build tools are intentionally kept — this is a builder image.
+
 ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
 
-# Install packages
-RUN apt-get update && apt-get install -y software-properties-common        
-
-RUN apt-get upgrade -yy
-
-# Install build dependencies for PHP compilation
-RUN apt-get install -y \
+# Install all build dependencies (including for optional extensions)
+RUN apt-get update && apt-get install -y \
     build-essential \
     autoconf \
     bison \
@@ -32,9 +35,16 @@ RUN apt-get install -y \
     libargon2-dev \
     libicu-dev \
     wget \
-    ca-certificates
+    ca-certificates \
+    # For imagick extension
+    libmagickwand-dev \
+    imagemagick \
+    # For ssh2 extension
+    libssh2-1-dev \
+    # For memcached extension
+    libmemcached-dev
 
-# Download and extract PHP 8.4.14
+# Download and extract PHP 8.4.1
 WORKDIR /usr/src
 RUN wget -q https://www.php.net/distributions/php-8.4.1.tar.gz && \
     tar -xzf php-8.4.1.tar.gz && \
@@ -80,13 +90,10 @@ RUN ./configure \
     --with-password-argon2
 
 RUN make -j$(nproc)
-
-# Install PHP
 RUN make install
 
 # Install PEAR/PECL
-RUN cd /usr/src/php-8.4.1 && \
-    wget -q https://pear.php.net/go-pear.phar && \
+RUN wget -q https://pear.php.net/go-pear.phar && \
     /usr/local/php8.4/bin/php go-pear.phar && \
     rm go-pear.phar
 
@@ -118,78 +125,33 @@ RUN sed -i 's/;pid = run\/php-fpm.pid/pid = \/var\/run\/php\/php8.4-fpm.pid/' /u
     sed -i 's/;listen.group = www-data/listen.group = www-data/' /usr/local/php8.4/etc/php-fpm.d/www.conf && \
     sed -i 's/;listen.mode = 0660/listen.mode = 0660/' /usr/local/php8.4/etc/php-fpm.d/www.conf
 
-# Remove build dependencies and keep runtime dependencies
-# Uses ldd to auto-detect needed runtime libraries, then apt-mark manual to protect them
-# This avoids the fragile pattern of remove-then-reinstall which breaks apt state
-RUN set -e && \
-    # Detect runtime library dependencies from compiled PHP binaries
-    RUNTIME_DEPS=$( \
-        { ldd /usr/local/php8.4/bin/php 2>/dev/null; \
-          ldd /usr/local/php8.4/sbin/php-fpm 2>/dev/null; \
-          find /usr/local/php8.4/lib/php/extensions/ -name '*.so' -exec ldd {} \; 2>/dev/null; \
-        } | grep -oP '=> \K/\S+' \
-        | sort -u \
-        | xargs -r dpkg -S 2>/dev/null \
-        | cut -d: -f1 \
-        | sort -u \
-        | tr '\n' ' ' \
-    ) && \
-    echo "Detected runtime deps: $RUNTIME_DEPS" && \
-    # Mark runtime deps as manually installed so apt-get autoremove won't touch them
-    apt-mark manual $RUNTIME_DEPS 2>/dev/null || true && \
-    # Remove all -dev packages generically (works across Ubuntu versions)
-    dpkg-query -Wf '${Package}\n' | grep -- '-dev$' | xargs -r apt-get remove -y 2>/dev/null || true && \
-    # Remove build tools individually (|| true handles missing packages across versions)
-    for pkg in build-essential autoconf bison re2c pkg-config make automake autotools-dev \
-               libtool software-properties-common fakeroot dpkg-dev patch wget \
-               manpages-dev bzip2-doc sgml-base xml-core lto-disabled-list; do \
-        apt-get remove -y "$pkg" 2>/dev/null || true; \
-    done && \
-    # Remove compilers and binutils via dpkg query (handles version differences)
-    dpkg-query -Wf '${Package}\n' | grep -E '^(gcc|g\+\+|cpp|binutils)-' | xargs -r apt-get remove -y 2>/dev/null || true && \
-    # Remove perl (version-specific package names handled by dpkg query)
-    dpkg-query -Wf '${Package}\n' | grep -E '^(perl|libperl)' | xargs -r apt-get remove -y 2>/dev/null || true && \
-    # Remove python3 packages that came with software-properties-common
-    dpkg-query -Wf '${Package}\n' | grep '^python3-' | xargs -r apt-get remove -y 2>/dev/null || true && \
-    # Remove other unnecessary packages
-    dpkg-query -Wf '${Package}\n' | grep -E '^(dbus|polkit|packagekit|gir1\.|networkd-dispatcher|unattended-upgrades|appstream|shared-mime-info|iso-codes|publicsuffix|icu-devtools)' | xargs -r apt-get remove -y 2>/dev/null || true && \
-    # Remove all orphaned auto-installed packages (runtime deps are safe - marked manual)
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /usr/src/php-8.4.1
+# Compile imagick extension from source
+RUN cd /tmp && \
+    wget -q https://pecl.php.net/get/imagick && \
+    mkdir imagick-src && tar -xzf imagick -C imagick-src --strip-components=1 && \
+    cd imagick-src && \
+    /usr/local/bin/phpize && \
+    ./configure --with-php-config=/usr/local/bin/php-config && \
+    make -j$(nproc) && make install && \
+    echo "extension=imagick.so" > /usr/local/php8.4/etc/conf.d/20-imagick.ini && \
+    cd / && rm -rf /tmp/imagick-src /tmp/imagick
 
-# Slim down the image size by stripping binaries
+# Compile optional extensions via PECL
+RUN pecl install ssh2-1.4.1 && \
+    echo "extension=ssh2.so" > /usr/local/php8.4/etc/conf.d/20-ssh2.ini
+
+RUN pecl install redis && \
+    echo "extension=redis.so" > /usr/local/php8.4/etc/conf.d/20-redis.ini
+
+RUN pecl install memcached && \
+    echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini
+
+# Strip binaries to reduce COPY size in downstream runtime images
 RUN strip --strip-all /usr/local/php8.4/bin/* /usr/local/php8.4/sbin/* 2>/dev/null || true && \
-    find /usr/local/php8.4/lib/php/extensions/ -name '*.so' -exec strip --strip-all {} \; 2>/dev/null || true
+    find /usr/local/php8.4/lib/php/extensions/ -name '*.so' -exec strip --strip-all {} \; 2>/dev/null || true && \
+    find /usr/local/php8.4/ -type f \( -name '*.a' -o -name '*.la' \) -delete
 
-# Slim down the image size by removing unneeded files
-RUN find /usr/local/php8.4/ -type f \( -name '*.a' -o -name '*.la' \) -delete
-
-# Remove source code directories
-RUN rm -rf /usr/src
-
-# Slim down the image size by removing documentation files
-RUN find /usr/local/php8.4/ -type f \( -name 'README*' -o -name 'CHANGELOG*' -o -name 'UPGRADING*' -o -name 'NEWS*' \) -delete
-
-# Remove man pages to save space
-RUN rm -rf /usr/local/php8.4/share/man /usr/share/man /usr/local/share/man
-
-# Additional cleanup - remove package cache and temporary files
-RUN rm -rf /var/cache/apt/* \
-    /var/lib/apt/lists/* \
-    /tmp/* \
-    /var/tmp/* \
-    /var/cache/debconf/* \
-    /var/log/* \
-    /usr/share/doc/* \
-    /usr/share/info/* \
-    /usr/share/locale/* \
-    /usr/share/pixmaps/* \
-    /usr/share/icons/* \
-    /usr/share/applications/* \
-    2>/dev/null || true
-
-# Recreate necessary runtime directories after cleanup
-RUN mkdir -p /var/log/php-fpm /var/run/php
+# Clean up source files (keep build tools for potential downstream use)
+RUN rm -rf /usr/src/php-8.4.1
 
 WORKDIR /
