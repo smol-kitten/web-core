@@ -118,8 +118,9 @@ RUN sed -i 's/;pid = run\/php-fpm.pid/pid = \/var\/run\/php\/php8.4-fpm.pid/' /u
     sed -i 's/;listen.group = www-data/listen.group = www-data/' /usr/local/php8.4/etc/php-fpm.d/www.conf && \
     sed -i 's/;listen.mode = 0660/listen.mode = 0660/' /usr/local/php8.4/etc/php-fpm.d/www.conf
 
-# Remove build dependencies and install runtime dependencies
-# Uses ldd to auto-detect needed runtime libraries, making this cross-version compatible
+# Remove build dependencies and keep runtime dependencies
+# Uses ldd to auto-detect needed runtime libraries, then apt-mark manual to protect them
+# This avoids the fragile pattern of remove-then-reinstall which breaks apt state
 RUN set -e && \
     # Detect runtime library dependencies from compiled PHP binaries
     RUNTIME_DEPS=$( \
@@ -134,6 +135,8 @@ RUN set -e && \
         | tr '\n' ' ' \
     ) && \
     echo "Detected runtime deps: $RUNTIME_DEPS" && \
+    # Mark runtime deps as manually installed so apt-get autoremove won't touch them
+    apt-mark manual $RUNTIME_DEPS 2>/dev/null || true && \
     # Remove all -dev packages generically (works across Ubuntu versions)
     dpkg-query -Wf '${Package}\n' | grep -- '-dev$' | xargs -r apt-get remove -y 2>/dev/null || true && \
     # Remove build tools individually (|| true handles missing packages across versions)
@@ -150,11 +153,8 @@ RUN set -e && \
     dpkg-query -Wf '${Package}\n' | grep '^python3-' | xargs -r apt-get remove -y 2>/dev/null || true && \
     # Remove other unnecessary packages
     dpkg-query -Wf '${Package}\n' | grep -E '^(dbus|polkit|packagekit|gir1\.|networkd-dispatcher|unattended-upgrades|appstream|shared-mime-info|iso-codes|publicsuffix|icu-devtools)' | xargs -r apt-get remove -y 2>/dev/null || true && \
-    # Remove all orphaned auto-installed packages
+    # Remove all orphaned auto-installed packages (runtime deps are safe - marked manual)
     apt-get autoremove -y && \
-    # Reinstall runtime dependencies that may have been removed
-    apt-get update && \
-    apt-get install -y --no-install-recommends $RUNTIME_DEPS && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /usr/src/php-8.4.1
 
