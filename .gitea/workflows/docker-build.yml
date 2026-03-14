@@ -59,27 +59,34 @@ jobs:
           build-args: |
             BASE_IMAGE=ubuntu:${{ matrix.version }}
       
+      - name: Push non-slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_base
+          push: true
+          tags: |
+            ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=ubuntu:${{ matrix.version }}
+      
       - name: Slim the image
         uses: kitabisa/docker-slim-action@v1
+        continue-on-error: true
         env:
           DSLIM_HTTP_PROBE: false
         with:
           target: prep_base:${{ matrix.version }}
           tag: "slim-${{ matrix.version }}"
       
-      - name: Create Dockerfile for slimmed image push
+      - name: Push slimmed image
+        continue-on-error: true
         run: |
-          echo "FROM prep_base:slim-${{ matrix.version }}" > Dockerfile.slim
-      
-      - name: Push slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.slim
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+          docker tag prep_base:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
+          docker tag prep_base:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
+          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
+          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}-slim
 
   build-prep-nginx:
     needs: build-prep-base
@@ -123,27 +130,34 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
       
+      - name: Push non-slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_nginx
+          push: true
+          tags: |
+            ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
+            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+      
       - name: Slim the image
         uses: kitabisa/docker-slim-action@v1
+        continue-on-error: true
         env:
           DSLIM_HTTP_PROBE: false
         with:
           target: prep_nginx:${{ matrix.version }}
           tag: "slim-${{ matrix.version }}"
       
-      - name: Create Dockerfile for slimmed image push
+      - name: Push slimmed image
+        continue-on-error: true
         run: |
-          echo "FROM prep_nginx:slim-${{ matrix.version }}" > Dockerfile.slim
-      
-      - name: Push slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.slim
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
+          docker tag prep_nginx:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
+          docker tag prep_nginx:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
+          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
+          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}-slim
 
   build-prep-apache:
     needs: build-prep-base
@@ -187,27 +201,34 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
       
+      - name: Push non-slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_apache2
+          push: true
+          tags: |
+            ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
+            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_base:${{ matrix.version }}
+      
       - name: Slim the image
         uses: kitabisa/docker-slim-action@v1
+        continue-on-error: true
         env:
           DSLIM_HTTP_PROBE: false
         with:
           target: prep_apache2:${{ matrix.version }}
           tag: "slim-${{ matrix.version }}"
       
-      - name: Create Dockerfile for slimmed image push
+      - name: Push slimmed image
+        continue-on-error: true
         run: |
-          echo "FROM prep_apache2:slim-${{ matrix.version }}" > Dockerfile.slim
-      
-      - name: Push slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.slim
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
+          docker tag prep_apache2:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
+          docker tag prep_apache2:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
+          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
+          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}-slim
 
   build-prep-nginx-imagick:
     needs: build-prep-nginx
@@ -251,27 +272,34 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
       
+      - name: Push non-slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_nginx_imagick
+          push: true
+          tags: |
+            ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
+            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx:${{ matrix.version }}
+      
       - name: Slim the image
         uses: kitabisa/docker-slim-action@v1
+        continue-on-error: true
         env:
           DSLIM_HTTP_PROBE: false
         with:
           target: prep_nginx_imagick:${{ matrix.version }}
           tag: "slim-${{ matrix.version }}"
       
-      - name: Create Dockerfile for slimmed image push
+      - name: Push slimmed image
+        continue-on-error: true
         run: |
-          echo "FROM prep_nginx_imagick:slim-${{ matrix.version }}" > Dockerfile.slim
-      
-      - name: Push slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.slim
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}
+          docker tag prep_nginx_imagick:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
+          docker tag prep_nginx_imagick:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
+          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
+          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_nginx_imagick:${{ matrix.version }}-slim
 
   build-prep-apache-imagick:
     needs: [build-prep-apache, build-prep-nginx-imagick]
@@ -315,27 +343,34 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
       
+      - name: Push non-slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_prep_apache2_imagick
+          push: true
+          tags: |
+            ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
+            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2:${{ matrix.version }}
+      
       - name: Slim the image
         uses: kitabisa/docker-slim-action@v1
+        continue-on-error: true
         env:
           DSLIM_HTTP_PROBE: false
         with:
           target: prep_apache2_imagick:${{ matrix.version }}
           tag: "slim-${{ matrix.version }}"
       
-      - name: Create Dockerfile for slimmed image push
+      - name: Push slimmed image
+        continue-on-error: true
         run: |
-          echo "FROM prep_apache2_imagick:slim-${{ matrix.version }}" > Dockerfile.slim
-      
-      - name: Push slimmed image to both registries
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.slim
-          push: true
-          tags: |
-            ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
-            ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}
+          docker tag prep_apache2_imagick:slim-${{ matrix.version }} ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
+          docker tag prep_apache2_imagick:slim-${{ matrix.version }} ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
+          docker push ${{ env.GITEA_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
+          docker push ${{ env.GITHUB_IMAGE_PREFIX }}/prep_apache2_imagick:${{ matrix.version }}-slim
 
   build-variants:
     needs: [build-prep-nginx-imagick, build-prep-apache-imagick]
@@ -437,6 +472,27 @@ jobs:
           tags: ${{ steps.meta.outputs.local_tag }}
           build-args: |
             BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
+            UBUNTU_VERSION=${{ matrix.version }}
+            SERVER_TYPE=${{ matrix.server }}
+            INSTALL_IMAGICK=${{ matrix.imagick }}
+            INSTALL_REDIS=${{ matrix.redis }}
+            INSTALL_MEMCACHED=${{ matrix.memcached }}
+            INSTALL_SSH2=${{ matrix.ssh2 }}
+            INSTALL_CRON=${{ matrix.cron }}
+      
+      - name: Push non-slimmed image to both registries
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile_specific
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.gitea_tag }}
+            ${{ steps.meta.outputs.github_tag }}
+          build-args: |
+            BASE_IMAGE=${{ env.GITEA_IMAGE_PREFIX }}/${{ steps.meta.outputs.base_prep }}:${{ matrix.version }}
+            UBUNTU_VERSION=${{ matrix.version }}
+            SERVER_TYPE=${{ matrix.server }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
             INSTALL_REDIS=${{ matrix.redis }}
             INSTALL_MEMCACHED=${{ matrix.memcached }}
@@ -445,6 +501,7 @@ jobs:
       
       - name: Slim the image
         uses: kitabisa/docker-slim-action@v1
+        continue-on-error: true
         env:
           DSLIM_HTTP_PROBE: false
         with:
@@ -452,20 +509,22 @@ jobs:
           tag: "slim"
       
       - name: Create Dockerfile for slimmed image push
+        continue-on-error: true
         run: |
           LOCAL_TAG="${{ steps.meta.outputs.local_tag }}"
           BASE_NAME="${LOCAL_TAG%%:*}"
           echo "FROM ${BASE_NAME}:slim" > Dockerfile.slim
       
       - name: Push slimmed image to both registries
+        continue-on-error: true
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.slim
           push: true
           tags: |
-            ${{ steps.meta.outputs.gitea_tag }}
-            ${{ steps.meta.outputs.github_tag }}
+            ${{ steps.meta.outputs.gitea_tag }}-slim
+            ${{ steps.meta.outputs.github_tag }}-slim
 
   cleanup-untagged:
     needs: build-variants
