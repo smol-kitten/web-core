@@ -60,45 +60,41 @@ Final images are tagged based on enabled extensions.
 ### Dockerfile_prep_base
 - `BASE_IMAGE` (default: `ubuntu:24.04`): Ubuntu base image version
 
-### Dockerfile_prep_nginx
-- `BASE_IMAGE` (default: `prep_base:24.04`): Base prep image to build from
-
-### Dockerfile_prep_apache2
-- `BASE_IMAGE` (default: `prep_base:24.04`): Base prep image to build from
-
 ### Dockerfile_specific
-- `BASE_IMAGE` (default: `prep_nginx_imagick:24.04` or `prep_apache2_imagick:24.04`): Base prep image to build from
-- `INSTALL_IMAGICK` (default: `true`): Include imagick extension (pre-compiled in prep_*_imagick images)
-- `INSTALL_REDIS` (default: `true`): Include Redis extension via PECL
-- `INSTALL_MEMCACHED` (default: `true`): Include Memcached extension via PECL
-- `INSTALL_SSH2` (default: `true`): Include SSH2 extension via PECL
+- `BUILDER_IMAGE` (default: `prep_base:24.04`): Builder image with compiled PHP and extensions
+- `UBUNTU_VERSION` (default: `24.04`): Ubuntu version for clean runtime base
+- `SERVER_TYPE` (default: `nginx`): Web server type (`nginx` or `apache2`)
+- `INSTALL_IMAGICK` (default: `true`): Include imagick extension
+- `INSTALL_REDIS` (default: `false`): Include Redis extension
+- `INSTALL_MEMCACHED` (default: `false`): Include Memcached extension
+- `INSTALL_SSH2` (default: `false`): Include SSH2 extension
 - `INSTALL_CRON` (default: `false`): Include cron daemon for scheduled tasks
 
 ## Example Build Commands
 
-**Manual multi-stage build:**
+**Manual 2-stage build:**
 ```sh
-# 1. Build prep base (PHP 8.4.1 from source - takes ~3 minutes)
+# 1. Build builder image (PHP 8.4 from source with all extensions)
 docker build -f Dockerfile_prep_base --build-arg BASE_IMAGE=ubuntu:24.04 -t prep_base:24.04 .
 
-# 2. Build prep nginx
-docker build -f Dockerfile_prep_nginx --build-arg BASE_IMAGE=prep_base:24.04 -t prep_nginx:24.04 .
-
-# 2b. Build prep apache2
-docker build -f Dockerfile_prep_apache2 --build-arg BASE_IMAGE=prep_base:24.04 -t prep_apache2:24.04 .
-
-# 3. Build prep nginx with imagick (optional, takes ~10 minutes)
-docker build -f Dockerfile_prep_nginx_imagick --build-arg BASE_IMAGE=prep_nginx:24.04 -t prep_nginx_imagick:24.04 .
-
-# 4. Build specific variant (nginx)
+# 2. Build runtime variant (nginx with all extensions)
 docker build -f Dockerfile_specific \
-  --build-arg BASE_IMAGE=prep_nginx_imagick:24.04 \
+  --build-arg BUILDER_IMAGE=prep_base:24.04 \
+  --build-arg UBUNTU_VERSION=24.04 \
+  --build-arg SERVER_TYPE=nginx \
   --build-arg INSTALL_IMAGICK=true \
   --build-arg INSTALL_REDIS=true \
   --build-arg INSTALL_MEMCACHED=true \
   --build-arg INSTALL_SSH2=true \
   --build-arg INSTALL_CRON=true \
   -t nginx:24.04-full .
+
+# 2b. Build runtime variant (apache2)
+docker build -f Dockerfile_specific \
+  --build-arg BUILDER_IMAGE=prep_base:24.04 \
+  --build-arg UBUNTU_VERSION=24.04 \
+  --build-arg SERVER_TYPE=apache2 \
+  -t apache:24.04 .
 ```
 
 **Using Docker Compose for testing:**
@@ -473,7 +469,7 @@ COPY ./mysite.conf /etc/nginx/sites-enabled/mysite.conf
 ## Extending
 
 ### Adding More PHP Extensions
-Edit `Dockerfile_prep_nginx` or `Dockerfile_prep_apache2` to add common extensions for all variants, or `Dockerfile_specific` to add optional extensions.
+Edit `Dockerfile_prep_base` to add extensions compiled at build time, or `Dockerfile_specific` to add optional runtime extensions.
 
 ### Adding More Variants
 Adjust the build matrix in `.github/workflows/docker-build.yml` to add more extension combinations.

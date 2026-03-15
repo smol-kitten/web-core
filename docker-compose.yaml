@@ -1,5 +1,5 @@
 services:
-  # Base images need to be built first
+  # Builder image (compiles PHP + all extensions)
   prep-base:
     build:
       context: .
@@ -11,58 +11,7 @@ services:
     command: /bin/true
     profiles: ["build"]
 
-  prep-nginx-base:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx
-      args:
-        BASE_IMAGE: prep_base:24.04
-    image: prep_nginx:24.04
-    container_name: prep-nginx-base
-    command: /bin/true
-    profiles: ["build"]
-    depends_on:
-      - prep-base
-
-  prep-apache-base:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2
-      args:
-        BASE_IMAGE: prep_base:24.04
-    image: prep_apache2:24.04
-    container_name: prep-apache-base
-    command: /bin/true
-    profiles: ["build"]
-    depends_on:
-      - prep-base
-
-  prep-nginx-imagick:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx_imagick
-      args:
-        BASE_IMAGE: prep_nginx:24.04
-    image: prep_nginx_imagick:24.04
-    container_name: prep-nginx-imagick
-    command: /bin/true
-    profiles: ["build"]
-    depends_on:
-      - prep-nginx-base
-
-  prep-apache-imagick:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2_imagick
-      args:
-        BASE_IMAGE: prep_apache2:24.04
-    image: prep_apache2_imagick:24.04
-    container_name: prep-apache-imagick
-    command: /bin/true
-    profiles: ["build"]
-    depends_on:
-      - prep-apache-base
-
+  # Runtime nginx variant
   nginx:
     environment:
       - QUICK_SET=API
@@ -70,35 +19,42 @@ services:
       - EXPOSE_SERVER_SOFTWARE=false
     build:
       context: .
-      dockerfile: Dockerfile_prep_nginx
+      dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_base:24.04
-    image: prep_nginx:24.04
+        BUILDER_IMAGE: prep_base:24.04
+        UBUNTU_VERSION: "24.04"
+        SERVER_TYPE: nginx
+    image: web_nginx:24.04
     container_name: web_nginx
-    # index.php is preloaded at build time
     ports:
       - "8080:1234"
     restart: always
+    depends_on:
+      - prep-base
     healthcheck:
       test: ["CMD-SHELL", "ss -ltn | grep -P ':1234' || exit 1"]
       interval: 30s
       timeout: 3s
       retries: 3
 
+  # Runtime apache variant
   apache:
     environment:
       - QUICK_SET=CMS
     build:
       context: .
-      dockerfile: Dockerfile_prep_apache2
+      dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_base:24.04
-    image: prep_apache2:24.04
+        BUILDER_IMAGE: prep_base:24.04
+        UBUNTU_VERSION: "24.04"
+        SERVER_TYPE: apache2
+    image: web_apache:24.04
     container_name: web_apache
-    # index.php is preloaded at build time
     ports:
       - "8081:80"
     restart: always
+    depends_on:
+      - prep-base
     healthcheck:
       test: ["CMD-SHELL", "ss -ltn | grep -P ':80' || exit 1"]
       interval: 30s

@@ -1,6 +1,6 @@
 services:
   # ========================================
-  # Ubuntu 24.04 Build Chain
+  # Ubuntu 24.04 Build Chain (2-stage: builder → runtime)
   # ========================================
   
   prep-base-2404:
@@ -13,61 +13,14 @@ services:
     container_name: prep-base-2404
     profiles: ["build-2404", "build-all", "test-2404", "test-all"]
 
-  prep-nginx-2404:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx
-      args:
-        BASE_IMAGE: prep_base:24.04
-    image: prep_nginx:24.04
-    container_name: prep-nginx-2404
-    depends_on:
-      - prep-base-2404
-    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
-
-  prep-apache-2404:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2
-      args:
-        BASE_IMAGE: prep_base:24.04
-    image: prep_apache2:24.04
-    container_name: prep-apache-2404
-    depends_on:
-      - prep-base-2404
-    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
-
-  prep-nginx-imagick-2404:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx_imagick
-      args:
-        BASE_IMAGE: prep_nginx:24.04
-    image: prep_nginx_imagick:24.04
-    container_name: prep-nginx-imagick-2404
-    depends_on:
-      - prep-nginx-2404
-    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
-
-  prep-apache-imagick-2404:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2_imagick
-      args:
-        BASE_IMAGE: prep_apache2:24.04
-    image: prep_apache2_imagick:24.04
-    container_name: prep-apache-imagick-2404
-    depends_on:
-      - prep-apache-2404
-    profiles: ["build-2404", "build-all", "test-2404", "test-all"]
-
   # Test variant: nginx with imagick, redis, memcached, ssh2
   variant-nginx-full-2404:
     build:
       context: .
       dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_nginx_imagick:24.04
+        BUILDER_IMAGE: prep_base:24.04
+        UBUNTU_VERSION: "24.04"
         SERVER_TYPE: nginx
         INSTALL_IMAGICK: "true"
         INSTALL_REDIS: "true"
@@ -83,7 +36,7 @@ services:
       - PHP_MEMORY_LIMIT=512M
       - EXPOSE_SERVER_SOFTWARE=on
     depends_on:
-      - prep-nginx-imagick-2404
+      - prep-base-2404
     profiles: ["test-2404", "test-all"]
 
   # Test variant: apache with imagick, all extensions
@@ -92,7 +45,8 @@ services:
       context: .
       dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_apache2_imagick:24.04
+        BUILDER_IMAGE: prep_base:24.04
+        UBUNTU_VERSION: "24.04"
         SERVER_TYPE: apache2
         INSTALL_IMAGICK: "true"
         INSTALL_REDIS: "true"
@@ -108,7 +62,7 @@ services:
       - PHP_MEMORY_LIMIT=256M
       - EXPOSE_SERVER_SOFTWARE=on
     depends_on:
-      - prep-apache-imagick-2404
+      - prep-base-2404
     profiles: ["test-2404", "test-all"]
 
   # ========================================
@@ -125,61 +79,14 @@ services:
     container_name: prep-base-2504
     profiles: ["build-2504", "build-all", "test-2504", "test-all"]
 
-  prep-nginx-2504:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx
-      args:
-        BASE_IMAGE: prep_base:25.04
-    image: prep_nginx:25.04
-    container_name: prep-nginx-2504
-    depends_on:
-      - prep-base-2504
-    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
-
-  prep-apache-2504:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2
-      args:
-        BASE_IMAGE: prep_base:25.04
-    image: prep_apache2:25.04
-    container_name: prep-apache-2504
-    depends_on:
-      - prep-base-2504
-    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
-
-  prep-nginx-imagick-2504:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx_imagick
-      args:
-        BASE_IMAGE: prep_nginx:25.04
-    image: prep_nginx_imagick:25.04
-    container_name: prep-nginx-imagick-2504
-    depends_on:
-      - prep-nginx-2504
-    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
-
-  prep-apache-imagick-2504:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2_imagick
-      args:
-        BASE_IMAGE: prep_apache2:25.04
-    image: prep_apache2_imagick:25.04
-    container_name: prep-apache-imagick-2504
-    depends_on:
-      - prep-apache-2504
-    profiles: ["build-2504", "build-all", "test-2504", "test-all"]
-
   # Test variant: nginx with imagick, all extensions (25.04)
   variant-nginx-full-2504:
     build:
       context: .
       dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_nginx_imagick:25.04
+        BUILDER_IMAGE: prep_base:25.04
+        UBUNTU_VERSION: "25.04"
         SERVER_TYPE: nginx
         INSTALL_IMAGICK: "true"
         INSTALL_REDIS: "true"
@@ -195,7 +102,7 @@ services:
       - PHP_MEMORY_LIMIT=512M
       - EXPOSE_SERVER_SOFTWARE=on
     depends_on:
-      - prep-nginx-imagick-2504
+      - prep-base-2504
     profiles: ["test-2504", "test-all"]
 
   # Test variant: apache with imagick, all extensions (25.04)
@@ -204,7 +111,8 @@ services:
       context: .
       dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_apache2_imagick:25.04
+        BUILDER_IMAGE: prep_base:25.04
+        UBUNTU_VERSION: "25.04"
         SERVER_TYPE: apache2
         INSTALL_IMAGICK: "true"
         INSTALL_REDIS: "true"
@@ -220,7 +128,7 @@ services:
       - PHP_MEMORY_LIMIT=128M
       - EXPOSE_SERVER_SOFTWARE=on
     depends_on:
-      - prep-apache-imagick-2504
+      - prep-base-2504
     profiles: ["test-2504", "test-all"]
 
   # ========================================
@@ -237,61 +145,14 @@ services:
     container_name: prep-base-2510
     profiles: ["build-2510", "build-all", "test-2510", "test-all"]
 
-  prep-nginx-2510:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx
-      args:
-        BASE_IMAGE: prep_base:25.10
-    image: prep_nginx:25.10
-    container_name: prep-nginx-2510
-    depends_on:
-      - prep-base-2510
-    profiles: ["build-2510", "build-all", "test-2510", "test-all"]
-
-  prep-apache-2510:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2
-      args:
-        BASE_IMAGE: prep_base:25.10
-    image: prep_apache2:25.10
-    container_name: prep-apache-2510
-    depends_on:
-      - prep-base-2510
-    profiles: ["build-2510", "build-all", "test-2510", "test-all"]
-
-  prep-nginx-imagick-2510:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_nginx_imagick
-      args:
-        BASE_IMAGE: prep_nginx:25.10
-    image: prep_nginx_imagick:25.10
-    container_name: prep-nginx-imagick-2510
-    depends_on:
-      - prep-nginx-2510
-    profiles: ["build-2510", "build-all", "test-2510", "test-all"]
-
-  prep-apache-imagick-2510:
-    build:
-      context: .
-      dockerfile: Dockerfile_prep_apache2_imagick
-      args:
-        BASE_IMAGE: prep_apache2:25.10
-    image: prep_apache2_imagick:25.10
-    container_name: prep-apache-imagick-2510
-    depends_on:
-      - prep-apache-2510
-    profiles: ["build-2510", "build-all", "test-2510", "test-all"]
-
   # Test variant: nginx with imagick, all extensions (25.10)
   variant-nginx-full-2510:
     build:
       context: .
       dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_nginx_imagick:25.10
+        BUILDER_IMAGE: prep_base:25.10
+        UBUNTU_VERSION: "25.10"
         SERVER_TYPE: nginx
         INSTALL_IMAGICK: "true"
         INSTALL_REDIS: "true"
@@ -307,7 +168,7 @@ services:
       - PHP_MEMORY_LIMIT=512M
       - EXPOSE_SERVER_SOFTWARE=on
     depends_on:
-      - prep-nginx-imagick-2510
+      - prep-base-2510
     profiles: ["test-2510", "test-all"]
 
   # Test variant: apache with imagick, all extensions (25.10)
@@ -316,7 +177,8 @@ services:
       context: .
       dockerfile: Dockerfile_specific
       args:
-        BASE_IMAGE: prep_apache2_imagick:25.10
+        BUILDER_IMAGE: prep_base:25.10
+        UBUNTU_VERSION: "25.10"
         SERVER_TYPE: apache2
         INSTALL_IMAGICK: "true"
         INSTALL_REDIS: "true"
@@ -332,5 +194,5 @@ services:
       - PHP_MEMORY_LIMIT=256M
       - EXPOSE_SERVER_SOFTWARE=on
     depends_on:
-      - prep-apache-imagick-2510
+      - prep-base-2510
     profiles: ["test-2510", "test-all"]
