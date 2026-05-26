@@ -77,7 +77,7 @@ jobs:
           sudo chmod -R 0777 /home/runner/.cache/buildx || true
 
       - name: Build and push builder image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile_prep_base
@@ -140,7 +140,7 @@ jobs:
           sudo chmod -R 0777 /home/runner/.cache/buildx || true
 
       - name: Build and push variant image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile_specific
