@@ -1,6 +1,13 @@
-# Simplified 2-stage build pipeline:
-# 1. Build and push builder images (prep_base) with compiled PHP + all extensions
-# 2. Build and push runtime variants (small images using multi-stage COPY from builder)
+# Full build pipeline:
+# 1. Resolve the latest PHP 8.4.x release from php.net
+# 2. Build and push builder images (prep_base) with compiled PHP + all extensions
+# 3. Build and push all runtime variants
+# 4. Scan a sample image with Trivy
+# 5. Clean up untagged container versions
+#
+# Triggers:
+#   push to main  — always run full build
+#   weekly Sunday — always run full build (new PHP releases, new base image layers)
 
 name: Build Docker Images
 
@@ -8,39 +15,58 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 2 * * 0'  # Weekly on Sundays at 02:00 UTC
+    - cron: '0 3 * * 0'  # Weekly Sunday 03:00 UTC – full rebuild
 
 jobs:
+  # ------------------------------------------------------------------
+  # Resolve latest PHP 8.4.x from php.net (avoids hardcoded versions)
+  # ------------------------------------------------------------------
+  resolve-php-version:
+    runs-on: self-hosted
+    outputs:
+      php_version: ${{ steps.php.outputs.version }}
+    steps:
+      - name: Fetch latest PHP 8.4.x version
+        id: php
+        run: |
+          VERSION=$(curl -fsSL 'https://www.php.net/releases/index.php?json&version=8.4' \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null \
+            || echo "8.4.6")
+          echo "Resolved PHP version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------
+  # Build and push prep_base (PHP compiled from source + all PECL exts)
+  # ------------------------------------------------------------------
   build-builder:
+    needs: resolve-php-version
     runs-on: self-hosted
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
+        version: [ "24.04", "25.04", "25.10" ]
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Ensure buildx cache directories
+
+      - name: Ensure buildx cache directory
         run: |
           sudo mkdir -p /home/runner/.cache/buildx/prep-base
           sudo chmod -R 0777 /home/runner/.cache/buildx || true
-      
+
       - name: Build and push builder image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile_prep_base
@@ -48,69 +74,62 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
           build-args: |
             BASE_IMAGE=ubuntu:${{ matrix.version }}
+            PHP_VERSION=${{ needs.resolve-php-version.outputs.php_version }}
           cache-from: type=local,src=/home/runner/.cache/buildx/prep-base
-          cache-to: type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
+  # ------------------------------------------------------------------
+  # Build and push all runtime variants
+  # ------------------------------------------------------------------
   build-variants:
-    needs: build-builder
+    needs: [ resolve-php-version, build-builder ]
     runs-on: self-hosted
     strategy:
       fail-fast: false
+      max-parallel: 20
       matrix:
-        server:
-          - nginx
-          - apache2
-        version:
-          - 24.04
-          - 25.04
-          - "25.10"
-        imagick:
-          - true
-          - false
-        redis:
-          - true
-          - false
-        memcached:
-          - true
-          - false
-        ssh2:
-          - true
-          - false
-        cron:
-          - true
-          - false
+        server:    [ nginx, apache2 ]
+        version:   [ "24.04", "25.04", "25.10" ]
+        imagick:   [ "true", "false" ]
+        redis:     [ "true", "false" ]
+        memcached: [ "true", "false" ]
+        ssh2:      [ "true", "false" ]
+        cron:      [ "true", "false" ]
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Set image metadata
+
+      - name: Build image tag
         id: meta
         run: |
-          VARIANT=""
-          [ "${{ matrix.imagick }}" = "true" ] && VARIANT="${VARIANT}-imagick"
-          [ "${{ matrix.redis }}" = "true" ] && VARIANT="${VARIANT}-redis"
-          [ "${{ matrix.memcached }}" = "true" ] && VARIANT="${VARIANT}-memcached"
-          [ "${{ matrix.ssh2 }}" = "true" ] && VARIANT="${VARIANT}-ssh2"
-          [ "${{ matrix.cron }}" = "true" ] && VARIANT="${VARIANT}-cron"
-          
-          IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${VARIANT}"
-          
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          echo "variant=$VARIANT" >> $GITHUB_OUTPUT
+          TAG=""
+          [ "${{ matrix.imagick }}"   = "true" ] && TAG="${TAG}-imagick"
+          [ "${{ matrix.redis }}"     = "true" ] && TAG="${TAG}-redis"
+          [ "${{ matrix.memcached }}" = "true" ] && TAG="${TAG}-memcached"
+          [ "${{ matrix.ssh2 }}"      = "true" ] && TAG="${TAG}-ssh2"
+          [ "${{ matrix.cron }}"      = "true" ] && TAG="${TAG}-cron"
+          echo "image_tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${TAG}" \
+            >> "$GITHUB_OUTPUT"
+          echo "cache_key=${{ matrix.server }}-${{ matrix.version }}" >> "$GITHUB_OUTPUT"
         shell: bash
-      
+
+      - name: Ensure buildx cache directory
+        run: |
+          sudo mkdir -p "/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }}"
+          sudo chmod -R 0777 /home/runner/.cache/buildx || true
+
       - name: Build and push variant image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile_specific
@@ -125,51 +144,89 @@ jobs:
             INSTALL_MEMCACHED=${{ matrix.memcached }}
             INSTALL_SSH2=${{ matrix.ssh2 }}
             INSTALL_CRON=${{ matrix.cron }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ matrix.server }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }}
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }},mode=max
 
+  # ------------------------------------------------------------------
+  # Trivy vulnerability scan on a representative image
+  # ------------------------------------------------------------------
+  scan-images:
+    needs: build-variants
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        server:  [ nginx, apache2 ]
+        version: [ "24.04", "25.04" ]
+    steps:
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}-imagick
+          format: table
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  # ------------------------------------------------------------------
+  # Remove untagged container versions from the registry
+  # ------------------------------------------------------------------
   cleanup-untagged:
     needs: build-variants
     runs-on: self-hosted
-    if: always() && (github.event_name == 'push' || github.event_name == 'schedule')
+    if: always()
     steps:
-      - name: Delete untagged images from registry
+      - name: Delete untagged image versions
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const packages = ['nginx', 'apache2', 'prep_base'];
-            
-            for (const packageName of packages) {
+            const owner = context.repo.owner;
+
+            async function getVersions(packageName) {
+              // Try org endpoint first, fall back to user endpoint
               try {
-                const versions = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
-                  package_type: 'container',
-                  package_name: packageName,
-                  org: context.repo.owner
+                const res = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
+                  package_type: 'container', package_name: packageName, org: owner
                 });
-                
-                const untaggedVersions = versions.data.filter(version => {
-                  const tags = version.metadata.container.tags;
-                  return !tags || tags.length === 0;
+                return res.data;
+              } catch {
+                const res = await github.rest.packages.getAllPackageVersionsForPackageOwnedByUser({
+                  package_type: 'container', package_name: packageName, username: owner
                 });
-                
-                for (const version of untaggedVersions) {
-                  console.log(`Deleting untagged version ${version.id} of package ${packageName}`);
-                  try {
-                    await github.rest.packages.deletePackageVersionForOrg({
-                      package_type: 'container',
-                      package_name: packageName,
-                      org: context.repo.owner,
-                      package_version_id: version.id
-                    });
-                    console.log(`  ✅ Deleted successfully`);
-                  } catch (deleteError) {
-                    console.log(`  ⚠️  Failed to delete: ${deleteError.message}`);
-                  }
-                }
-                
-                console.log(`✅ Cleaned up ${untaggedVersions.length} untagged versions from ${packageName}`);
-              } catch (error) {
-                console.log(`⚠️  Error cleaning up ${packageName}: ${error.message}`);
+                return res.data;
               }
             }
-            console.log(`\n🎉 Cleanup complete!`);
+
+            async function deleteVersion(packageName, versionId) {
+              try {
+                await github.rest.packages.deletePackageVersionForOrg({
+                  package_type: 'container', package_name: packageName,
+                  org: owner, package_version_id: versionId
+                });
+              } catch {
+                await github.rest.packages.deletePackageVersionForUser({
+                  package_type: 'container', package_name: packageName,
+                  username: owner, package_version_id: versionId
+                });
+              }
+            }
+
+            for (const pkg of packages) {
+              try {
+                const versions = await getVersions(pkg);
+                const untagged = versions.filter(v => !v.metadata?.container?.tags?.length);
+                console.log(`${pkg}: ${untagged.length} untagged version(s) to remove`);
+                for (const v of untagged) {
+                  try {
+                    await deleteVersion(pkg, v.id);
+                    console.log(`  Deleted version ${v.id}`);
+                  } catch (e) {
+                    console.log(`  Failed to delete ${v.id}: ${e.message}`);
+                  }
+                }
+              } catch (e) {
+                console.log(`Skipping ${pkg}: ${e.message}`);
+              }
+            }

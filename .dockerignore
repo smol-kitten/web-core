@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode
+*.ps1
+*.md
+test-imagick/
+docker-compose*.yaml
+.github/
+.gitea/

@@ -1,19 +1,19 @@
 services:
   # ========================================
-  # Ubuntu 24.04 Build Chain (2-stage: builder → runtime)
+  # Ubuntu 24.04 Build Chain
   # ========================================
-  
+
   prep-base-2404:
     build:
       context: .
       dockerfile: Dockerfile_prep_base
       args:
         BASE_IMAGE: ubuntu:24.04
+        PHP_VERSION: "8.4.6"
     image: prep_base:24.04
     container_name: prep-base-2404
     profiles: ["build-2404", "build-all", "test-2404", "test-all"]
 
-  # Test variant: nginx with imagick, redis, memcached, ssh2
   variant-nginx-full-2404:
     build:
       context: .
@@ -39,7 +39,6 @@ services:
       - prep-base-2404
     profiles: ["test-2404", "test-all"]
 
-  # Test variant: apache with imagick, all extensions
   variant-apache-full-2404:
     build:
       context: .
@@ -66,20 +65,20 @@ services:
     profiles: ["test-2404", "test-all"]
 
   # ========================================
-  # Ubuntu 25.04 (Plucky) Build Chain
+  # Ubuntu 25.04 Build Chain
   # ========================================
-  
+
   prep-base-2504:
     build:
       context: .
       dockerfile: Dockerfile_prep_base
       args:
         BASE_IMAGE: ubuntu:25.04
+        PHP_VERSION: "8.4.6"
     image: prep_base:25.04
     container_name: prep-base-2504
     profiles: ["build-2504", "build-all", "test-2504", "test-all"]
 
-  # Test variant: nginx with imagick, all extensions (25.04)
   variant-nginx-full-2504:
     build:
       context: .
@@ -105,7 +104,6 @@ services:
       - prep-base-2504
     profiles: ["test-2504", "test-all"]
 
-  # Test variant: apache with imagick, all extensions (25.04)
   variant-apache-full-2504:
     build:
       context: .
@@ -132,20 +130,20 @@ services:
     profiles: ["test-2504", "test-all"]
 
   # ========================================
-  # Ubuntu 25.10 (Questing) Build Chain
+  # Ubuntu 25.10 Build Chain
   # ========================================
-  
+
   prep-base-2510:
     build:
       context: .
       dockerfile: Dockerfile_prep_base
       args:
         BASE_IMAGE: dhi.io/ubuntu:25.10
+        PHP_VERSION: "8.4.6"
     image: prep_base:25.10
     container_name: prep-base-2510
     profiles: ["build-2510", "build-all", "test-2510", "test-all"]
 
-  # Test variant: nginx with imagick, all extensions (25.10)
   variant-nginx-full-2510:
     build:
       context: .
@@ -171,7 +169,6 @@ services:
       - prep-base-2510
     profiles: ["test-2510", "test-all"]
 
-  # Test variant: apache with imagick, all extensions (25.10)
   variant-apache-full-2510:
     build:
       context: .
