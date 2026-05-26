@@ -19,6 +19,9 @@ FROM ${BUILDER_IMAGE} AS builder
 ARG UBUNTU_VERSION=24.04
 FROM ubuntu:${UBUNTU_VERSION}
 
+# Use bash with pipefail so pipe errors in RUN commands are caught
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG SERVER_TYPE=nginx
 ARG INSTALL_IMAGICK=true
 ARG INSTALL_SSH2=false

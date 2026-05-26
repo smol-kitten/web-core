@@ -1,0 +1,41 @@
+# hadolint configuration
+# https://github.com/hadolint/hadolint
+failure-threshold: error
+
+ignore:
+  # DL3008: Pin versions in apt-get install — intentionally unpinned so
+  # every build picks up the latest security patches automatically.
+  - DL3008
+
+  # DL3009: Delete apt-get lists — we do rm -rf /var/lib/apt/lists/* in
+  # every RUN that calls apt-get; hadolint sometimes still warns.
+  - DL3009
+
+  # DL3003: Use WORKDIR instead of cd — within a single RUN command,
+  # cd is the correct way to navigate; WORKDIR between RUN commands is
+  # handled properly throughout.
+  - DL3003
+
+  # DL3059: Multiple consecutive RUN instructions — intentional: separate
+  # RUN layers allow Docker's build cache to avoid re-running expensive
+  # steps (e.g. PHP compilation) when only later steps change.
+  - DL3059
+
+  # SC2046: Quote this to prevent word-splitting — the apt-cache subshell
+  # expansions in Dockerfile_specific are intentionally unquoted so the
+  # dynamically resolved package name is passed as a separate argument.
+  - SC2046
+
+  # SC2086: Double quote to prevent globbing — same rationale as SC2046.
+  - SC2086
+
+  # SC2155: Declare and assign separately — EXT_DIR=$(php -r '...') is
+  # used outside a function so local/declare is not applicable; the exit
+  # code is checked by the surrounding && chain.
+  - SC2155
+
+trustedRegistries:
+  - ghcr.io
+  - docker.io
+  - git.catboy.systems
+  - dhi.io

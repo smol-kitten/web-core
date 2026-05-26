@@ -9,6 +9,9 @@
 ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
 
+# Use bash with pipefail for safer RUN commands
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG PHP_VERSION=8.4.6
 
 # Security: upgrade pre-installed OS packages before adding our own

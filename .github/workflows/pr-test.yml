@@ -22,17 +22,13 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile_prep_base
-          # DL3008: no version pins (intentional — we want latest security patches)
-          # DL3009: delete lists (we do this at the end of each RUN)
-          ignore: DL3008,DL3009
+          # Rule overrides are in .hadolint.yaml at the repo root
 
       - name: Lint Dockerfile_specific
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile_specific
-          # SC2046/SC2086: unquoted command substitution in apt install is intentional
-          # (dynamic package name resolution for Ubuntu version compatibility)
-          ignore: DL3008,DL3009,SC2046,SC2086
+          # Rule overrides are in .hadolint.yaml at the repo root
 
   # ------------------------------------------------------------------
   # Test runtime build (nginx + imagick, Ubuntu 24.04, no push)
