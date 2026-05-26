@@ -16,6 +16,12 @@ on:
     branches: [ main ]
   schedule:
     - cron: '0 3 * * 0'  # Weekly Sunday 03:00 UTC – full rebuild
+  workflow_dispatch:
+    inputs:
+      php_version_override:
+        description: 'Override PHP version (leave blank to auto-resolve latest 8.4.x)'
+        required: false
+        default: ''
 
 jobs:
   # ------------------------------------------------------------------
@@ -29,9 +35,14 @@ jobs:
       - name: Fetch latest PHP 8.4.x version
         id: php
         run: |
-          VERSION=$(curl -fsSL 'https://www.php.net/releases/index.php?json&version=8.4' \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null \
-            || echo "8.4.6")
+          OVERRIDE="${{ github.event.inputs.php_version_override }}"
+          if [ -n "$OVERRIDE" ]; then
+            VERSION="$OVERRIDE"
+          else
+            VERSION=$(curl -fsSL 'https://www.php.net/releases/index.php?json&version=8.4' \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null \
+              || echo "8.4.6")
+          fi
           echo "Resolved PHP version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 

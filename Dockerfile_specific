@@ -31,6 +31,7 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
+        curl \
         libxml2 \
         libsqlite3-0 \
         libbz2-1.0 \
@@ -52,11 +53,11 @@ RUN apt-get update && \
         $(apt-cache search --names-only '^libgd[0-9]+(t64)?$'   | awk '{print $1}' | head -1 || echo "libgd3") && \
     rm -rf /var/lib/apt/lists/*
 
-# Install web server
+# Install web server + mod_headers for Apache security headers
 RUN apt-get update && \
     if [ "$SERVER_TYPE" = "apache2" ]; then \
         apt-get install -y --no-install-recommends apache2 && \
-        a2enmod proxy_fcgi setenvif rewrite; \
+        a2enmod proxy_fcgi setenvif rewrite headers; \
     else \
         apt-get install -y --no-install-recommends nginx; \
     fi && \
@@ -97,7 +98,7 @@ RUN ln -sf /usr/local/php8.4/bin/php        /usr/local/bin/php && \
     ln -sf /usr/local/php8.4/bin/pear       /usr/local/bin/pear && \
     ln -sf /usr/local/php8.4/sbin/php-fpm   /usr/local/bin/php-fpm
 
-# Remove .ini files AND .so files for disabled extensions to keep the image lean
+# Remove .ini AND .so for disabled extensions (saves image space)
 RUN EXT_DIR=$(php -r 'echo ini_get("extension_dir");') && \
     if [ "$INSTALL_IMAGICK" != "true" ]; then \
         rm -f /usr/local/php8.4/etc/conf.d/20-imagick.ini && \
@@ -116,13 +117,21 @@ RUN EXT_DIR=$(php -r 'echo ini_get("extension_dir");') && \
         rm -f "$EXT_DIR/memcached.so"; \
     fi
 
+# Enable PHP-FPM status page (needed by health worker + telemetry)
+RUN sed -i 's/;pm.status_path = .*/pm.status_path = \/php-fpm-status/' \
+        /usr/local/php8.4/etc/php-fpm.d/www.conf || \
+    echo "pm.status_path = /php-fpm-status" >> /usr/local/php8.4/etc/php-fpm.d/www.conf
+
 # Directories and permissions
 RUN mkdir -p /var/www/html /var/run/php /var/log/php-fpm /run/nginx && \
     useradd -r -s /sbin/nologin www-data 2>/dev/null || true && \
     chown -R www-data:www-data /var/www/html /var/run/php /var/log/php-fpm
 
-# Copy configs, shared entrypoint, and test page
+# Copy all entrypoint scripts, configs, and test page
 COPY src/entrypoint-common.sh       /docker-entrypoint-common.sh
+COPY src/auto-tune.sh               /docker-auto-tune.sh
+COPY src/health-worker.sh           /docker-health-worker.sh
+COPY src/telemetry.sh               /docker-telemetry.sh
 COPY src/nginx/nginx.conf           /tmp/nginx/nginx.conf
 COPY src/nginx/site.conf            /tmp/nginx/site.conf
 COPY src/apache/000-default.conf    /tmp/apache/000-default.conf
@@ -130,8 +139,9 @@ COPY src/docker-entrypoint-nginx.sh   /tmp/entrypoint-nginx.sh
 COPY src/docker-entrypoint-apache.sh  /tmp/entrypoint-apache.sh
 COPY src/index.php                  /var/www/html/index.php
 
-# Configure web server and set active entrypoint
-RUN chmod +x /docker-entrypoint-common.sh && \
+# Configure web server and activate the correct entrypoint
+RUN chmod +x /docker-entrypoint-common.sh /docker-auto-tune.sh \
+             /docker-health-worker.sh /docker-telemetry.sh && \
     if [ "$SERVER_TYPE" = "apache2" ]; then \
         mkdir -p /etc/apache2/sites-enabled && \
         cp /tmp/apache/000-default.conf /etc/apache2/sites-enabled/000-default.conf && \
