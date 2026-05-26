@@ -31,12 +31,43 @@ jobs:
           # Rule overrides are in .hadolint.yaml at the repo root
 
   # ------------------------------------------------------------------
+  # Check whether the cached prep_base image exists in the registry.
+  # The runtime build jobs depend on it; if it hasn't been built yet
+  # (build.yml only runs on push to main) we skip rather than fail.
+  # ------------------------------------------------------------------
+  check-prep-base:
+    runs-on: self-hosted
+    needs: lint
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Probe registry for prep_base:24.04
+        id: probe
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/prep_base:24.04"
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "available=true"  >> "$GITHUB_OUTPUT"
+            echo "prep_base found in registry — build tests will run"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "prep_base not yet in registry (run build.yml on main first) — skipping build tests"
+          fi
+
+  # ------------------------------------------------------------------
   # Test runtime build (nginx + imagick, Ubuntu 24.04, no push)
   # Uses the already-built prep_base from the registry so this is fast.
   # ------------------------------------------------------------------
   test-build-nginx:
     runs-on: self-hosted
-    needs: lint
+    needs: check-prep-base
+    if: needs.check-prep-base.outputs.available == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +99,8 @@ jobs:
 
   test-build-apache:
     runs-on: self-hosted
-    needs: lint
+    needs: check-prep-base
+    if: needs.check-prep-base.outputs.available == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -104,6 +136,7 @@ jobs:
   smoke-test:
     runs-on: self-hosted
     needs: test-build-nginx
+    if: needs.test-build-nginx.result == 'success'
     steps:
       - uses: actions/checkout@v4
 
