@@ -1,19 +1,26 @@
 # Runtime Image for PHP Web Applications
-# Uses pre-built builder image (prep_base) and creates a clean runtime
-# with only the necessary runtime dependencies, web server, and PHP binaries.
+# Pulls compiled PHP from a prep_base builder image and creates a minimal
+# runtime with only the required runtime libraries and web server.
 #
 # Build args:
-#   BUILDER_IMAGE - The prep_base builder image with compiled PHP
-#   UBUNTU_VERSION - Ubuntu version for the runtime base
-#   SERVER_TYPE - "nginx" or "apache2"
-#   INSTALL_IMAGICK, INSTALL_SSH2, INSTALL_REDIS, INSTALL_MEMCACHED, INSTALL_CRON
+#   BUILDER_IMAGE      - prep_base image with compiled PHP (required)
+#   UBUNTU_VERSION     - Ubuntu version for the runtime base (default 24.04)
+#   SERVER_TYPE        - "nginx" or "apache2" (default nginx)
+#   INSTALL_IMAGICK    - include imagick extension (default true)
+#   INSTALL_SSH2       - include ssh2 extension (default false)
+#   INSTALL_REDIS      - include redis extension (default false)
+#   INSTALL_MEMCACHED  - include memcached extension (default false)
+#   INSTALL_CRON       - include cron daemon (default false)
 
 ARG BUILDER_IMAGE=ghcr.io/smol-kitten/prep_base:24.04
 FROM ${BUILDER_IMAGE} AS builder
 
-# --- Clean Runtime Image ---
+# --- Clean Runtime Stage ---
 ARG UBUNTU_VERSION=24.04
 FROM ubuntu:${UBUNTU_VERSION}
+
+# Use bash with pipefail so pipe errors in RUN commands are caught
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SERVER_TYPE=nginx
 ARG INSTALL_IMAGICK=true
@@ -22,94 +29,123 @@ ARG INSTALL_REDIS=false
 ARG INSTALL_MEMCACHED=false
 ARG INSTALL_CRON=false
 
-# Install only runtime dependencies (no build tools)
+# Security: upgrade pre-installed packages, then add only runtime deps (no build tools)
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
+        curl \
         libxml2 \
         libsqlite3-0 \
         libbz2-1.0 \
         zlib1g && \
-    # Dynamically detect package names for different Ubuntu versions (t64 transition)
     apt-get install -y --no-install-recommends \
-        $(apt-cache search --names-only '^libssl3(t64)?$' | awk '{print $1}' | head -1) \
-        $(apt-cache search --names-only '^libcurl4(t64)?$' | awk '{print $1}' | head -1) \
-        $(apt-cache search --names-only '^libreadline8(t64)?$' | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libssl3(t64)?$'       | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libcurl4(t64)?$'      | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libreadline8(t64)?$'  | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libonig[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libonig5") \
         $(apt-cache search --names-only '^libsodium[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libsodium23") \
         $(apt-cache search --names-only '^libargon2-[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libargon2-1") \
-        $(apt-cache search ^libzip[45]$ | awk '{print $1}' | head -1) \
-        $(apt-cache search --names-only '^libpng16-16(t64)?$' | awk '{print $1}' | head -1) \
-        $(apt-cache search --names-only '^libicu[0-9]+$' | awk '{print $1}' | head -1) \
+        $(apt-cache search '^libzip[45]$'                        | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libpng16-16(t64)?$'   | awk '{print $1}' | head -1) \
+        $(apt-cache search --names-only '^libicu[0-9]+$'        | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libjpeg[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libjpeg8") \
         $(apt-cache search --names-only '^libfreetype[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libfreetype6") \
         $(apt-cache search --names-only '^libwebp[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libwebp7") \
-        $(apt-cache search --names-only '^libxpm[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libxpm4") \
-        $(apt-cache search --names-only '^libgd[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libgd3") && \
+        $(apt-cache search --names-only '^libxpm[0-9]+(t64)?$'  | awk '{print $1}' | head -1 || echo "libxpm4") \
+        $(apt-cache search --names-only '^libgd[0-9]+(t64)?$'   | awk '{print $1}' | head -1 || echo "libgd3") && \
     rm -rf /var/lib/apt/lists/*
 
-# Install web server
+# Install web server + mod_headers for Apache security headers
 RUN apt-get update && \
     if [ "$SERVER_TYPE" = "apache2" ]; then \
         apt-get install -y --no-install-recommends apache2 && \
-        a2enmod proxy_fcgi setenvif rewrite; \
+        a2enmod proxy_fcgi setenvif rewrite headers; \
     else \
         apt-get install -y --no-install-recommends nginx; \
     fi && \
     rm -rf /var/lib/apt/lists/*
 
-# Install optional runtime dependencies
+# Install optional runtime libraries
 RUN apt-get update && \
     if [ "$INSTALL_IMAGICK" = "true" ]; then \
         apt-get install -y --no-install-recommends imagemagick \
-            $(apt-cache search --names-only '^libmagickwand-[0-9]+-[0-9]+\.q16-[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libmagickwand-6.q16-6"); \
+            $(apt-cache search --names-only '^libmagickwand-[0-9]+-[0-9]+\.q16-[0-9]+(t64)?$' \
+                | awk '{print $1}' | head -1 || echo "libmagickwand-6.q16-6"); \
     fi && \
     if [ "$INSTALL_SSH2" = "true" ]; then \
         apt-get install -y --no-install-recommends \
-            $(apt-cache search --names-only '^libssh2-[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libssh2-1"); \
+            $(apt-cache search --names-only '^libssh2-[0-9]+(t64)?$' \
+                | awk '{print $1}' | head -1 || echo "libssh2-1"); \
     fi && \
     if [ "$INSTALL_MEMCACHED" = "true" ]; then \
         apt-get install -y --no-install-recommends \
-            $(apt-cache search --names-only '^libmemcached[0-9]+(t64)?$' | awk '{print $1}' | head -1 || echo "libmemcached11"); \
+            $(apt-cache search --names-only '^libmemcached[0-9]+(t64)?$' \
+                | awk '{print $1}' | head -1 || echo "libmemcached11"); \
     fi && \
     if [ "$INSTALL_CRON" = "true" ]; then \
         apt-get install -y --no-install-recommends cron; \
     fi && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy compiled PHP from builder (all extensions pre-compiled)
+# Copy compiled PHP from builder
 COPY --from=builder /usr/local/php8.4 /usr/local/php8.4
 
-# Create symlinks for PHP binaries
-RUN ln -sf /usr/local/php8.4/bin/php /usr/local/bin/php && \
-    ln -sf /usr/local/php8.4/bin/php-cgi /usr/local/bin/php-cgi && \
+# Symlinks for PHP binaries
+RUN ln -sf /usr/local/php8.4/bin/php        /usr/local/bin/php && \
+    ln -sf /usr/local/php8.4/bin/php-cgi    /usr/local/bin/php-cgi && \
     ln -sf /usr/local/php8.4/bin/php-config /usr/local/bin/php-config && \
-    ln -sf /usr/local/php8.4/bin/phpize /usr/local/bin/phpize && \
-    ln -sf /usr/local/php8.4/bin/pecl /usr/local/bin/pecl && \
-    ln -sf /usr/local/php8.4/bin/pear /usr/local/bin/pear && \
-    ln -sf /usr/local/php8.4/sbin/php-fpm /usr/local/bin/php-fpm
+    ln -sf /usr/local/php8.4/bin/phpize     /usr/local/bin/phpize && \
+    ln -sf /usr/local/php8.4/bin/pecl       /usr/local/bin/pecl && \
+    ln -sf /usr/local/php8.4/bin/pear       /usr/local/bin/pear && \
+    ln -sf /usr/local/php8.4/sbin/php-fpm   /usr/local/bin/php-fpm
 
-# Disable unused extensions (remove .ini files for extensions not requested)
-RUN if [ "$INSTALL_IMAGICK" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-imagick.ini; fi && \
-    if [ "$INSTALL_SSH2" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-ssh2.ini; fi && \
-    if [ "$INSTALL_REDIS" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-redis.ini; fi && \
-    if [ "$INSTALL_MEMCACHED" != "true" ]; then rm -f /usr/local/php8.4/etc/conf.d/20-memcached.ini; fi
+# Remove .ini AND .so for disabled extensions (saves image space)
+RUN EXT_DIR=$(php -r 'echo ini_get("extension_dir");') && \
+    if [ "$INSTALL_IMAGICK" != "true" ]; then \
+        rm -f /usr/local/php8.4/etc/conf.d/20-imagick.ini && \
+        rm -f "$EXT_DIR/imagick.so"; \
+    fi && \
+    if [ "$INSTALL_SSH2" != "true" ]; then \
+        rm -f /usr/local/php8.4/etc/conf.d/20-ssh2.ini && \
+        rm -f "$EXT_DIR/ssh2.so"; \
+    fi && \
+    if [ "$INSTALL_REDIS" != "true" ]; then \
+        rm -f /usr/local/php8.4/etc/conf.d/20-redis.ini && \
+        rm -f "$EXT_DIR/redis.so"; \
+    fi && \
+    if [ "$INSTALL_MEMCACHED" != "true" ]; then \
+        rm -f /usr/local/php8.4/etc/conf.d/20-memcached.ini && \
+        rm -f "$EXT_DIR/memcached.so"; \
+    fi
 
-# Create necessary directories and users
+# Enable PHP-FPM status page (needed by health worker + telemetry)
+RUN sed -i 's/;pm.status_path = .*/pm.status_path = \/php-fpm-status/' \
+        /usr/local/php8.4/etc/php-fpm.d/www.conf || \
+    echo "pm.status_path = /php-fpm-status" >> /usr/local/php8.4/etc/php-fpm.d/www.conf
+
+# Directories and permissions
 RUN mkdir -p /var/www/html /var/run/php /var/log/php-fpm /run/nginx && \
     useradd -r -s /sbin/nologin www-data 2>/dev/null || true && \
     chown -R www-data:www-data /var/www/html /var/run/php /var/log/php-fpm
 
-# Copy web server configs, entrypoint, and test page
-COPY src/nginx/nginx.conf /tmp/nginx/nginx.conf
-COPY src/nginx/site.conf /tmp/nginx/site.conf
-COPY src/apache/000-default.conf /tmp/apache/000-default.conf
-COPY src/docker-entrypoint-nginx.sh /tmp/entrypoint-nginx.sh
-COPY src/docker-entrypoint-apache.sh /tmp/entrypoint-apache.sh
-COPY src/index.php /var/www/html/index.php
+# Copy all entrypoint scripts, configs, and test page
+COPY src/entrypoint-common.sh       /docker-entrypoint-common.sh
+COPY src/auto-tune.sh               /docker-auto-tune.sh
+COPY src/health-worker.sh           /docker-health-worker.sh
+COPY src/telemetry.sh               /docker-telemetry.sh
+COPY src/nginx/nginx.conf           /tmp/nginx/nginx.conf
+COPY src/nginx/site.conf            /tmp/nginx/site.conf
+COPY src/apache/000-default.conf    /tmp/apache/000-default.conf
+COPY src/docker-entrypoint-nginx.sh   /tmp/entrypoint-nginx.sh
+COPY src/docker-entrypoint-apache.sh  /tmp/entrypoint-apache.sh
+COPY src/index.php                  /var/www/html/index.php
 
-# Configure web server based on SERVER_TYPE
-RUN if [ "$SERVER_TYPE" = "apache2" ]; then \
+# Configure web server and activate the correct entrypoint
+RUN chmod +x /docker-entrypoint-common.sh /docker-auto-tune.sh \
+             /docker-health-worker.sh /docker-telemetry.sh && \
+    if [ "$SERVER_TYPE" = "apache2" ]; then \
         mkdir -p /etc/apache2/sites-enabled && \
         cp /tmp/apache/000-default.conf /etc/apache2/sites-enabled/000-default.conf && \
         printf '<FilesMatch \\.php$>\n    SetHandler "proxy:unix:/var/run/php/php8.4-fpm.sock|fcgi://localhost"\n</FilesMatch>\n' \

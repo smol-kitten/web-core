@@ -1,17 +1,16 @@
 services:
-  # Builder image (compiles PHP + all extensions)
   prep-base:
     build:
       context: .
       dockerfile: Dockerfile_prep_base
       args:
         BASE_IMAGE: ubuntu:24.04
+        PHP_VERSION: "8.4.6"
     image: prep_base:24.04
     container_name: prep-base
     command: /bin/true
     profiles: ["build"]
 
-  # Runtime nginx variant
   nginx:
     environment:
       - QUICK_SET=API
@@ -37,7 +36,6 @@ services:
       timeout: 3s
       retries: 3
 
-  # Runtime apache variant
   apache:
     environment:
       - QUICK_SET=CMS

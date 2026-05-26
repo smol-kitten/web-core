@@ -1,0 +1,185 @@
+# PR test pipeline — runs on every pull request targeting main.
+# Fast checks only: Dockerfile linting + a single no-push runtime build
+# using the existing prep_base from the registry.  Does NOT push anything.
+
+name: PR Test
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # ------------------------------------------------------------------
+  # Dockerfile lint with hadolint
+  # ------------------------------------------------------------------
+  lint:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile_prep_base
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile_prep_base
+          # Rule overrides are in .hadolint.yaml at the repo root
+
+      - name: Lint Dockerfile_specific
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile_specific
+          # Rule overrides are in .hadolint.yaml at the repo root
+
+  # ------------------------------------------------------------------
+  # Check whether the cached prep_base image exists in the registry.
+  # The runtime build jobs depend on it; if it hasn't been built yet
+  # (build.yml only runs on push to main) we skip rather than fail.
+  # ------------------------------------------------------------------
+  check-prep-base:
+    runs-on: self-hosted
+    needs: lint
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Probe registry for prep_base:24.04
+        id: probe
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/prep_base:24.04"
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "available=true"  >> "$GITHUB_OUTPUT"
+            echo "prep_base found in registry — build tests will run"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "prep_base not yet in registry (run build.yml on main first) — skipping build tests"
+          fi
+
+  # ------------------------------------------------------------------
+  # Test runtime build (nginx + imagick, Ubuntu 24.04, no push)
+  # Uses the already-built prep_base from the registry so this is fast.
+  # ------------------------------------------------------------------
+  test-build-nginx:
+    runs-on: self-hosted
+    needs: check-prep-base
+    if: needs.check-prep-base.outputs.available == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build nginx runtime image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile_specific
+          push: false
+          build-args: |
+            BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:24.04
+            UBUNTU_VERSION=24.04
+            SERVER_TYPE=nginx
+            INSTALL_IMAGICK=true
+            INSTALL_REDIS=false
+            INSTALL_MEMCACHED=false
+            INSTALL_SSH2=false
+            INSTALL_CRON=false
+
+  test-build-apache:
+    runs-on: self-hosted
+    needs: check-prep-base
+    if: needs.check-prep-base.outputs.available == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build apache runtime image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile_specific
+          push: false
+          build-args: |
+            BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:24.04
+            UBUNTU_VERSION=24.04
+            SERVER_TYPE=apache2
+            INSTALL_IMAGICK=true
+            INSTALL_REDIS=false
+            INSTALL_MEMCACHED=false
+            INSTALL_SSH2=false
+            INSTALL_CRON=false
+
+  # ------------------------------------------------------------------
+  # Smoke test: start a container and verify PHP-FPM + nginx respond
+  # ------------------------------------------------------------------
+  smoke-test:
+    runs-on: self-hosted
+    needs: test-build-nginx
+    if: needs.test-build-nginx.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile_specific
+          push: false
+          load: true
+          tags: pr-smoke-test:latest
+          build-args: |
+            BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:24.04
+            UBUNTU_VERSION=24.04
+            SERVER_TYPE=nginx
+            INSTALL_IMAGICK=true
+
+      - name: Run smoke test
+        run: |
+          docker run -d --name smoke-test \
+            -p 18080:80 \
+            -e QUICK_SET=API \
+            -e HEALTH_WORKER=false \
+            pr-smoke-test:latest
+
+          echo "Waiting for services to start..."
+          sleep 10
+
+          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:18080/ || echo 000)
+          echo "HTTP response: $HTTP_CODE"
+
+          docker logs smoke-test
+
+          docker stop smoke-test && docker rm smoke-test
+
+          [ "$HTTP_CODE" = "200" ] || { echo "Expected 200, got $HTTP_CODE"; exit 1; }
