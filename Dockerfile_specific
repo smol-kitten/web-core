@@ -13,10 +13,10 @@
 #   INSTALL_CRON       - include cron daemon (default false)
 
 ARG BUILDER_IMAGE=ghcr.io/smol-kitten/prep_base:24.04
+ARG UBUNTU_VERSION=24.04
 FROM ${BUILDER_IMAGE} AS builder
 
 # --- Clean Runtime Stage ---
-ARG UBUNTU_VERSION=24.04
 FROM ubuntu:${UBUNTU_VERSION}
 
 # Use bash with pipefail so pipe errors in RUN commands are caught
