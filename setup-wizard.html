@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>web-core — Setup Wizard</title>
+<style>
+:root {
+  --bg: #0d1117; --surf: #161b22; --surf2: #21262d; --border: #30363d;
+  --text: #e6edf3; --muted: #7d8590;
+  --blue: #58a6ff; --blue-bg: rgba(88,166,255,.12);
+  --green: #3fb950; --green-bg: rgba(63,185,80,.12);
+  --yellow: #d29922; --yellow-bg: rgba(210,153,34,.12);
+  --red: #f85149; --purple: #a371f7;
+  --r: 8px; --rs: 4px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;font-size:14px;line-height:1.6}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+header{background:var(--surf);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}
+.logo{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px}
+.logo-sep{color:var(--border)}
+.hdr-sub{color:var(--muted);font-size:13px}
+.gh-link{margin-left:auto;color:var(--muted);font-size:12px;text-decoration:none;display:flex;align-items:center;gap:5px;border:1px solid var(--border);padding:4px 10px;border-radius:var(--rs);transition:.15s}
+.gh-link:hover{color:var(--text);border-color:var(--muted)}
+
+/* ── Layout ──────────────────────────────────────────────────────── */
+.layout{display:grid;grid-template-columns:1fr 1fr;min-height:calc(100vh - 53px);max-width:1280px;margin:0 auto}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+
+/* ── Wizard pane ─────────────────────────────────────────────────── */
+.wizard-pane{padding:32px 28px 100px;border-right:1px solid var(--border);display:flex;flex-direction:column}
+@media(max-width:900px){.wizard-pane{border-right:none;border-bottom:1px solid var(--border);padding-bottom:28px}}
+
+/* ── Progress ──────────────────────────────────────────────────── */
+.progress{display:flex;align-items:center;margin-bottom:32px;overflow-x:auto;padding-bottom:4px}
+.progress::-webkit-scrollbar{height:3px}.progress::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.step-dot{display:flex;align-items:center;flex-shrink:0}
+.dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--muted);background:var(--surf);transition:.2s}
+.step-dot.done  .dot{background:var(--green-bg);border-color:var(--green);color:var(--green)}
+.step-dot.active .dot{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.step-dot .lbl{font-size:11px;color:var(--muted);white-space:nowrap;margin:0 6px}
+.step-dot.active .lbl{color:var(--text)}
+.conn{width:18px;height:2px;background:var(--border);flex-shrink:0}
+.step-dot.done .conn{background:var(--green)}
+
+/* ── Typography ────────────────────────────────────────────────── */
+.step-title{font-size:19px;font-weight:600;margin-bottom:6px}
+.step-sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+.field-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:block}
+
+/* ── Image type cards ──────────────────────────────────────────── */
+.type-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.type-card{border:1px solid var(--border);border-radius:var(--r);padding:14px;cursor:pointer;transition:.15s;background:var(--surf);position:relative}
+.type-card:hover{border-color:var(--muted);background:var(--surf2)}
+.type-card.sel{border-color:var(--blue);background:var(--blue-bg)}
+.type-icon{font-size:24px;margin-bottom:8px;display:block}
+.type-name{font-weight:600;font-size:13px;margin-bottom:3px}
+.type-desc{color:var(--muted);font-size:11px;line-height:1.4}
+.badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;padding:2px 5px;border-radius:var(--rs);background:var(--yellow-bg);color:var(--yellow);text-transform:uppercase;letter-spacing:.5px}
+.type-card.sel .badge{background:var(--blue-bg);color:var(--blue)}
+
+/* ── Radio pills ────────────────────────────────────────────────── */
+.radio-row{display:flex;flex-wrap:wrap;gap:8px}
+.rpill input{display:none}
+.rpill label{border:1px solid var(--border);border-radius:20px;padding:5px 14px;cursor:pointer;font-size:12px;color:var(--muted);transition:.15s;display:block}
+.rpill label:hover{border-color:var(--muted);color:var(--text)}
+.rpill input:checked+label{border-color:var(--blue);background:var(--blue-bg);color:var(--blue)}
+.rpill-warn label{border-color:var(--yellow)!important;color:var(--yellow)!important}
+.rpill-warn input:checked+label{background:var(--yellow-bg)!important}
+
+/* ── Extension checkboxes ──────────────────────────────────────── */
+.ext-row{display:flex;flex-wrap:wrap;gap:8px}
+.echip input{display:none}
+.echip label{border:1px solid var(--border);border-radius:var(--rs);padding:5px 12px;cursor:pointer;font-size:12px;color:var(--muted);transition:.15s;display:block}
+.echip label:hover{border-color:var(--muted);color:var(--text)}
+.echip input:checked+label{border-color:var(--purple);background:rgba(163,113,247,.1);color:var(--purple)}
+
+/* ── Inputs ────────────────────────────────────────────────────── */
+.txt-in,.num-in{background:var(--surf);border:1px solid var(--border);border-radius:var(--rs);padding:7px 10px;color:var(--text);font-size:13px;outline:none;transition:.15s}
+.txt-in:focus,.num-in:focus{border-color:var(--blue)}
+.txt-in{width:100%}.num-in{width:100px}
+.in-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.in-note{font-size:11px;color:var(--muted)}
+
+/* ── QUICK_SET cards ────────────────────────────────────────────── */
+.qs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px}
+.qs-card{border:1px solid var(--border);border-radius:var(--rs);padding:10px;cursor:pointer;transition:.15s;background:var(--surf)}
+.qs-card:hover{border-color:var(--muted)}
+.qs-card.sel{border-color:var(--blue);background:var(--blue-bg)}
+.qs-name{font-weight:600;font-size:13px;margin-bottom:2px}
+.qs-hint{font-size:11px;color:var(--muted);line-height:1.3}
+
+/* ── AUTO calculator ────────────────────────────────────────────── */
+.auto-box{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-top:8px}
+.auto-inputs{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:14px}
+.auto-f label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px}
+.calc-res{background:var(--surf2);border-radius:var(--rs);padding:10px;font-size:12px;display:grid;grid-template-columns:auto auto;gap:4px 20px}
+.ck{color:var(--muted)}.cv{color:var(--green);font-weight:600}
+
+/* ── Toggles ────────────────────────────────────────────────────── */
+.toggle-list{display:flex;flex-direction:column;gap:14px}
+.tog-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.tog-info .tog-lbl{font-size:13px;font-weight:500}
+.tog-info .tog-desc{font-size:11px;color:var(--muted);margin-top:2px}
+.tog-sub{margin-top:10px;padding-left:12px;border-left:2px solid var(--border)}
+.toggle{position:relative;width:36px;height:20px;flex-shrink:0;margin-top:2px}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.ttrack{display:block;width:36px;height:20px;background:var(--surf2);border-radius:10px;cursor:pointer;border:1px solid var(--border);transition:.2s;position:relative}
+.toggle input:checked+.ttrack{background:var(--blue);border-color:var(--blue)}
+.ttrack::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:var(--muted);border-radius:50%;transition:.2s}
+.toggle input:checked+.ttrack::after{left:19px;background:#fff}
+
+/* ── Notes ──────────────────────────────────────────────────────── */
+.note{background:var(--yellow-bg);border:1px solid rgba(210,153,34,.3);border-radius:var(--rs);padding:8px 10px;font-size:11px;color:var(--yellow);margin-top:6px}
+.note.blue{background:var(--blue-bg);border-color:rgba(88,166,255,.3);color:var(--blue)}
+.note code,.in-note code,.tog-desc code,.type-desc code{background:var(--surf2);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:10px}
+
+/* ── Preset table ────────────────────────────────────────────────── */
+.preset-box{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:14px}
+.preset-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px}
+.preset-row:last-child{border-bottom:none}
+.pk{color:var(--muted)}.pv{color:var(--green);font-weight:500}
+
+/* ── Navigation ──────────────────────────────────────────────────── */
+.step-nav{position:fixed;bottom:0;left:0;right:0;background:var(--surf);border-top:1px solid var(--border);padding:14px 28px;display:flex;gap:10px;z-index:9;max-width:640px}
+@media(max-width:900px){.step-nav{max-width:100%}}
+.btn{border-radius:var(--rs);padding:8px 18px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surf2);color:var(--text);transition:.15s}
+.btn:hover:not(:disabled){background:var(--surf);border-color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#000}
+.btn.primary:hover:not(:disabled){background:#79c0ff}
+
+/* ── Preview pane ────────────────────────────────────────────────── */
+.preview-pane{padding:32px 28px;position:sticky;top:53px;height:calc(100vh - 53px);display:flex;flex-direction:column;overflow:hidden}
+@media(max-width:900px){.preview-pane{position:static;height:auto;border-top:1px solid var(--border);padding-bottom:80px}}
+.tab-row{display:flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px;flex-shrink:0}
+.tab-btn{flex:1;padding:8px;font-size:12px;font-weight:500;cursor:pointer;background:var(--surf);border:none;color:var(--muted);transition:.15s}
+.tab-btn:hover{color:var(--text);background:var(--surf2)}
+.tab-btn.active{background:var(--surf2);color:var(--text)}
+.preview-box{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);flex:1;overflow:auto;position:relative;min-height:200px}
+.copy-btn{position:absolute;top:10px;right:10px;background:var(--surf2);border:1px solid var(--border);color:var(--muted);font-size:11px;padding:4px 10px;border-radius:var(--rs);cursor:pointer;transition:.15s;z-index:2}
+.copy-btn:hover{color:var(--text);border-color:var(--muted)}
+.copy-btn.copied{color:var(--green);border-color:var(--green)}
+pre#preview{font-family:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace;font-size:12px;line-height:1.7;padding:18px;white-space:pre}
+.yk{color:var(--blue)}.ys{color:var(--green)}.yn{color:var(--purple)}.yc{color:var(--muted);font-style:italic}
+
+/* ── Done step ────────────────────────────────────────────────────── */
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px}
+.chip{background:var(--surf2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--muted)}
+.chip.hi{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.done-links{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
+.done-link{color:var(--blue);font-size:13px;text-decoration:none}
+.done-link:hover{text-decoration:underline}
+.fgroup{margin-bottom:20px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--blue)">
+      <rect width="7" height="7"/><rect x="9" width="7" height="7"/>
+      <rect y="9" width="7" height="7"/><rect x="9" y="9" width="7" height="7"/>
+    </svg>
+    web-core
+  </div>
+  <span class="logo-sep">/</span>
+  <span class="hdr-sub">Setup Wizard</span>
+  <a class="gh-link" href="https://github.com/smol-kitten/web-core" target="_blank" rel="noopener">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    GitHub
+  </a>
+</header>
+
+<div class="layout">
+  <div class="wizard-pane">
+    <div class="progress" id="progress"></div>
+    <div id="step-content"></div>
+    <div class="step-nav">
+      <button class="btn" id="btn-back">← Back</button>
+      <button class="btn primary" id="btn-next">Next →</button>
+    </div>
+  </div>
+  <div class="preview-pane">
+    <div class="tab-row">
+      <button class="tab-btn active" data-tab="compose" onclick="switchTab(this)">docker-compose.yml</button>
+      <button class="tab-btn" data-tab="run" onclick="switchTab(this)">docker run</button>
+    </div>
+    <div class="preview-box">
+      <button class="copy-btn" id="copy-btn" onclick="copyPreview()">Copy</button>
+      <pre id="preview"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────
+   State
+───────────────────────────────────────── */
+const S = {
+  imageType: null,
+  ubuntu: '24.04',
+  exts: {imagick:false, redis:false, memcached:false, ssh2:false, cron:false},
+  spaFallback: true,
+  bunPort: 3000, bunNodeEnv: 'production', bunEntry: 'server.js',
+  quickset: 'default',
+  autoCores:2, autoRam:2048, autoWorkerMb:32, autoReservePct:30, autoRpm:0, autoUsers:0,
+  secHeaders:true, forceHttps:false, rateLimit:false, rateLimitRps:10, rateLimitBurst:20,
+  cspHeader:'', phpDisableDangerous:false, sessionSecure:false,
+  healthWorker:true, healthInterval:86400,
+  otelEnabled:false, otelEndpoint:'http://localhost:4318/v1/metrics',
+  otelServiceName:'php-web', otelInterval:60, otelHeaders:'', otelResourceAttrs:'',
+  webPort:80, tz:'UTC',
+};
+let previewTab = 'compose';
+
+/* ─────────────────────────────────────────
+   Image types
+───────────────────────────────────────── */
+const TYPES = [
+  {id:'nginx',   name:'nginx + PHP',  icon:'🌐', badge:'Most Popular', desc:'High-performance reverse proxy with PHP-FPM', php:true},
+  {id:'apache2', name:'Apache + PHP', icon:'🪶', badge:'',             desc:'Classic LAMP-style with Apache MPM event',   php:true},
+  {id:'caddy',   name:'Caddy + PHP',  icon:'⚡', badge:'New',          desc:'Modern server with automatic HTTPS + PHP-FPM',php:true},
+  {id:'static',  name:'Static / SPA', icon:'📦', badge:'New',          desc:'Lightweight nginx for React/Vue/Angular builds',php:false},
+  {id:'bun',     name:'Bun Edge',     icon:'🐇', badge:'New',          desc:'Fast JS/TS runtime for APIs and SSR apps',    php:false},
+];
+
+/* ─────────────────────────────────────────
+   Step flows per type
+───────────────────────────────────────── */
+const FLOWS = {
+  nginx:   ['type','version','performance','security','features','done'],
+  apache2: ['type','version','performance','security','features','done'],
+  caddy:   ['type','version','performance','security','features','done'],
+  static:  ['type','version-static','security-static','done'],
+  bun:     ['type','runtime','done'],
+  _none:   ['type'],
+};
+const STEP_LABELS = {
+  type:'Image','version':'Version','version-static':'Version',
+  performance:'Performance',security:'Security','security-static':'Security',
+  features:'Features',runtime:'Runtime',done:'Done',
+};
+
+let stepIdx = 0;
+function flow(){ return FLOWS[S.imageType] || FLOWS._none; }
+function stepId(){ return flow()[stepIdx]; }
+
+/* ─────────────────────────────────────────
+   Render cycle
+───────────────────────────────────────── */
+function render(){
+  renderProgress();
+  const fn = RENDERERS[stepId()];
+  document.getElementById('step-content').innerHTML = fn ? fn() : '';
+  updatePreview();
+  document.getElementById('btn-back').disabled = (stepIdx === 0);
+  const last = stepIdx === flow().length - 1;
+  const nb = document.getElementById('btn-next');
+  nb.textContent = last ? 'Start over' : 'Next →';
+  nb.disabled = (stepId() === 'type' && !S.imageType);
+}
+
+function renderProgress(){
+  const f = flow();
+  document.getElementById('progress').innerHTML = f.map((id,i)=>{
+    const cls = i<stepIdx?'done':i===stepIdx?'active':'';
+    const conn = i<f.length-1?`<div class="conn"></div>`:'';
+    return `<div class="step-dot ${cls}">
+      <div class="dot">${i<stepIdx?'✓':i+1}</div>
+      <span class="lbl">${STEP_LABELS[id]||id}</span>${conn}
+    </div>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────
+   Step renderers
+───────────────────────────────────────── */
+const RENDERERS = {
+
+  type(){
+    return `<h2 class="step-title">Choose your image type</h2>
+<p class="step-sub">Select the web server and runtime that best fits your application.</p>
+<div class="type-grid">
+${TYPES.map(t=>`<div class="type-card${S.imageType===t.id?' sel':''}" onclick="pick('${t.id}')">
+  ${t.badge?`<span class="badge">${t.badge}</span>`:''}
+  <span class="type-icon">${t.icon}</span>
+  <div class="type-name">${t.name}</div>
+  <div class="type-desc">${t.desc}</div>
+</div>`).join('')}
+</div>`;
+  },
+
+  version(){
+    return `<h2 class="step-title">Ubuntu version &amp; extensions</h2>
+<p class="step-sub">Select the base OS version and optional PHP extensions to bundle into the image.</p>
+<div class="fgroup">
+  <span class="field-label">Ubuntu version</span>
+  <div class="radio-row">
+    ${['24.04','25.04'].map(v=>`<div class="rpill">
+      <input type="radio" name="ub" id="u${v}" value="${v}" ${S.ubuntu===v?'checked':''}
+        onchange="S.ubuntu='${v}';updatePreview()">
+      <label for="u${v}">${v} LTS</label>
+    </div>`).join('')}
+    <div class="rpill rpill-warn">
+      <input type="radio" name="ub" id="u25.10" value="25.10" ${S.ubuntu==='25.10'?'checked':''}
+        onchange="S.ubuntu='25.10';updatePreview()">
+      <label for="u25.10">25.10 experimental</label>
+    </div>
+  </div>
+</div>
+<div class="fgroup">
+  <span class="field-label">PHP extensions</span>
+  <div class="ext-row">
+    ${['imagick','redis','memcached','ssh2','cron'].map(e=>`<div class="echip">
+      <input type="checkbox" id="e-${e}" ${S.exts[e]?'checked':''}
+        onchange="S.exts['${e}']=this.checked;updatePreview()">
+      <label for="e-${e}">${e}</label>
+    </div>`).join('')}
+  </div>
+  <div class="note blue" style="margin-top:10px">
+    Extensions are baked into the image tag — e.g. <code>:24.04-imagick-redis</code>.
+    Add only what you need; each extension increases image size.
+  </div>
+</div>`;
+  },
+
+  'version-static'(){
+    return `<h2 class="step-title">Version &amp; options</h2>
+<p class="step-sub">Configure the lightweight nginx static file server.</p>
+<div class="fgroup">
+  <span class="field-label">Ubuntu version</span>
+  <div class="radio-row">
+    ${['24.04','25.04'].map(v=>`<div class="rpill">
+      <input type="radio" name="ub" id="u${v}" value="${v}" ${S.ubuntu===v?'checked':''}
+        onchange="S.ubuntu='${v}';updatePreview()">
+      <label for="u${v}">${v} LTS</label>
+    </div>`).join('')}
+    <div class="rpill rpill-warn">
+      <input type="radio" name="ub" id="u25.10" value="25.10" ${S.ubuntu==='25.10'?'checked':''}
+        onchange="S.ubuntu='25.10';updatePreview()">
+      <label for="u25.10">25.10 experimental</label>
+    </div>
+  </div>
+</div>
+<div class="fgroup">
+  <span class="field-label">SPA routing fallback</span>
+  <div class="toggle-list">
+    ${tog('spaFallback','Client-side routing (SPA fallback)','Unknown paths return <code>index.html</code> — required for React Router, Vue Router, etc.')}
+  </div>
+  <div class="note blue" style="margin-top:10px">
+    Mount your <code>dist/</code> (or <code>build/</code>) folder to <code>/var/www/html</code>.
+  </div>
+</div>`;
+  },
+
+  runtime(){
+    return `<h2 class="step-title">Bun runtime options</h2>
+<p class="step-sub">Configure the Bun.js edge runtime. Mount your app to <code>/app</code>.</p>
+<div class="fgroup">
+  <span class="field-label">Listen port</span>
+  <div class="in-row">
+    <input class="num-in" type="number" min="1" max="65535" value="${S.bunPort}"
+      onchange="S.bunPort=+this.value||3000;updatePreview()">
+    <span class="in-note">Exposed on the container</span>
+  </div>
+</div>
+<div class="fgroup">
+  <span class="field-label">NODE_ENV</span>
+  <div class="radio-row">
+    ${['production','development'].map(v=>`<div class="rpill">
+      <input type="radio" name="ne" id="ne-${v}" ${S.bunNodeEnv===v?'checked':''}
+        onchange="S.bunNodeEnv='${v}';updatePreview()">
+      <label for="ne-${v}">${v}</label>
+    </div>`).join('')}
+  </div>
+</div>
+<div class="fgroup">
+  <span class="field-label">Entry file (BUN_ENTRY)</span>
+  <input class="txt-in" type="text" value="${S.bunEntry}" placeholder="server.js" style="max-width:220px"
+    oninput="S.bunEntry=this.value||'server.js';updatePreview()">
+  <div class="in-note" style="margin-top:4px">Path relative to <code>/app</code>.</div>
+</div>`;
+  },
+
+  performance(){
+    const presets = [
+      {id:'default',name:'Default',   hint:'Balanced general-purpose'},
+      {id:'AUTO',   name:'AUTO',      hint:'Tuned from server specs'},
+      {id:'API',    name:'API',       hint:'High concurrency, fast I/O'},
+      {id:'SHOP',   name:'SHOP',      hint:'E-commerce, session security'},
+      {id:'STATIC', name:'STATIC',    hint:'Mostly cached, minimal PHP'},
+      {id:'CMS',    name:'CMS',       hint:'Large uploads, long tasks'},
+    ];
+    const ac = calcAuto();
+    return `<h2 class="step-title">Performance preset</h2>
+<p class="step-sub">Pick a workload profile for PHP-FPM and the web server.</p>
+<div class="qs-grid">
+  ${presets.map(p=>`<div class="qs-card${S.quickset===p.id?' sel':''}" onclick="S.quickset='${p.id}';render()">
+    <div class="qs-name">${p.name}</div>
+    <div class="qs-hint">${p.hint}</div>
+  </div>`).join('')}
+</div>
+${S.quickset==='AUTO'?`
+<div class="auto-box">
+  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+    Resource calculator — enter your server specs
+  </div>
+  <div class="auto-inputs">
+    ${[['CPU cores','autoCores',2,1,256],['Total RAM (MB)','autoRam',2048,64,999999],
+       ['Worker mem (MB)','autoWorkerMb',32,8,2048],['Reserve RAM (%)','autoReservePct',30,0,80],
+       ['Req/min (hint)','autoRpm',0,0,9999999],['Concurrent users','autoUsers',0,0,9999999]
+    ].map(([l,k,d,mn,mx])=>`<div class="auto-f">
+      <label>${l}</label>
+      <input class="num-in" style="width:100%" type="number" min="${mn}" max="${mx}" value="${S[k]}"
+        onchange="S['${k}']=+this.value||${d};render()">
+    </div>`).join('')}
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Estimated container settings:</div>
+  <div class="calc-res">
+    <span class="ck">PHP_FPM_PM_MAX_CHILDREN</span><span class="cv">${ac.calc}</span>
+    <span class="ck">PHP_FPM_PM_START_SERVERS</span><span class="cv">${ac.start}</span>
+    <span class="ck">PHP_FPM_PM_MIN_SPARE</span><span class="cv">${ac.minSp}</span>
+    <span class="ck">PHP_FPM_PM_MAX_SPARE</span><span class="cv">${ac.maxSp}</span>
+    <span class="ck">PHP_MEMORY_LIMIT</span><span class="cv">${ac.memLimit}M</span>
+    <span class="ck">NGINX_WORKER_CONNECTIONS</span><span class="cv">${ac.ngConns}</span>
+  </div>
+</div>`:`
+<div class="preset-box">
+  <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
+    ${S.quickset==='default'?'DEFAULT':S.quickset} preset defaults
+  </div>
+  ${presetRows(S.quickset)}
+</div>`}`;
+  },
+
+  security(){
+    const isNginx = S.imageType === 'nginx';
+    const isCaddy = S.imageType === 'caddy';
+    return `<h2 class="step-title">Security hardening</h2>
+<p class="step-sub">Harden the web server and PHP runtime configuration.</p>
+<div class="toggle-list">
+  ${tog('secHeaders','Security headers','X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy')}
+  ${tog('forceHttps','HTTPS redirect (HSTS)','Adds Strict-Transport-Security. Deploy behind a TLS terminator or use Caddy auto-HTTPS.')}
+  ${isNginx?`<div>
+    ${tog('rateLimit','Rate limiting','Limits requests per IP via nginx — protects against abuse and scrapers.')}
+    ${S.rateLimit?`<div class="tog-sub">
+      <div class="in-row" style="margin-top:6px">
+        <span class="in-note">Requests/sec:</span>
+        <input class="num-in" type="number" min="1" max="9999" value="${S.rateLimitRps}" style="width:80px"
+          onchange="S.rateLimitRps=+this.value||10;updatePreview()">
+        <span class="in-note">Burst:</span>
+        <input class="num-in" type="number" min="1" max="9999" value="${S.rateLimitBurst}" style="width:80px"
+          onchange="S.rateLimitBurst=+this.value||20;updatePreview()">
+      </div>
+    </div>`:''}
+  </div>`:
+  isCaddy?`<div class="note">Rate limiting for Caddy requires the <code>caddy-ratelimit</code> plugin (not included).</div>`:
+  `<div class="note">Rate limiting is not available for Apache — use a load balancer or WAF upstream.</div>`}
+  ${tog('phpDisableDangerous','Disable dangerous PHP functions','Disables: exec, shell_exec, system, proc_open, popen, passthru, show_source, phpinfo')}
+  ${tog('sessionSecure','Secure session cookies','Sets SESSION_COOKIE_SECURE=On — requires HTTPS to function.')}
+</div>
+<div class="fgroup" style="margin-top:20px">
+  <span class="field-label">Content-Security-Policy (optional)</span>
+  <input class="txt-in" type="text" value="${S.cspHeader}" placeholder="default-src 'self'; script-src 'self' …"
+    oninput="S.cspHeader=this.value;updatePreview()">
+  <div class="in-note" style="margin-top:4px">Leave blank to omit the CSP header entirely.</div>
+</div>`;
+  },
+
+  'security-static'(){
+    return `<h2 class="step-title">Security</h2>
+<p class="step-sub">Security settings for the nginx static server.</p>
+<div class="toggle-list">
+  ${tog('secHeaders','Security headers','X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy')}
+  ${tog('forceHttps','HTTPS redirect (HSTS)','Adds Strict-Transport-Security. Deploy behind a TLS terminator.')}
+</div>
+<div class="fgroup" style="margin-top:20px">
+  <span class="field-label">Content-Security-Policy (optional)</span>
+  <input class="txt-in" type="text" value="${S.cspHeader}" placeholder="default-src 'self'; script-src 'self' …"
+    oninput="S.cspHeader=this.value;updatePreview()">
+</div>`;
+  },
+
+  features(){
+    return `<h2 class="step-title">Background features</h2>
+<p class="step-sub">Optional health monitoring and observability integrations.</p>
+<div class="toggle-list">
+  <div>
+    ${tog('healthWorker','Health worker','Background process that monitors PHP-FPM, restarts on memory leaks, and checks disk usage.')}
+    ${S.healthWorker?`<div class="tog-sub">
+      <div class="in-row" style="margin-top:6px">
+        <span class="in-note">Check every:</span>
+        <input class="num-in" type="number" min="60" max="604800" value="${S.healthInterval}"
+          onchange="S.healthInterval=+this.value||86400;render()">
+        <span class="in-note">${fmtInterval(S.healthInterval)}</span>
+      </div>
+    </div>`:''}
+  </div>
+  <div>
+    ${tog('otelEnabled','OpenTelemetry metrics (OTLP)','Pushes PHP-FPM metrics to an OpenTelemetry collector endpoint.')}
+    ${S.otelEnabled?`<div class="tog-sub" style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+      <div><label class="field-label">OTLP endpoint</label>
+        <input class="txt-in" type="url" value="${S.otelEndpoint}"
+          oninput="S.otelEndpoint=this.value;updatePreview()">
+      </div>
+      <div class="in-row">
+        <div style="flex:1"><label class="field-label">Service name</label>
+          <input class="txt-in" type="text" value="${S.otelServiceName}"
+            oninput="S.otelServiceName=this.value;updatePreview()">
+        </div>
+        <div><label class="field-label">Interval (s)</label>
+          <input class="num-in" type="number" min="10" value="${S.otelInterval}"
+            onchange="S.otelInterval=+this.value||60;updatePreview()">
+        </div>
+      </div>
+      <div><label class="field-label">Auth header (optional)</label>
+        <input class="txt-in" type="text" placeholder="Authorization: Bearer token123" value="${S.otelHeaders}"
+          oninput="S.otelHeaders=this.value;updatePreview()">
+      </div>
+      <div><label class="field-label">Resource attributes (optional)</label>
+        <input class="txt-in" type="text" placeholder="env=prod,region=us-east-1" value="${S.otelResourceAttrs}"
+          oninput="S.otelResourceAttrs=this.value;updatePreview()">
+      </div>
+    </div>`:''}
+  </div>
+</div>`;
+  },
+
+  done(){
+    const img = imageName();
+    return `<h2 class="step-title">Your configuration is ready 🎉</h2>
+<p class="step-sub">Copy the generated config from the panel on the right.</p>
+<div class="chip-row">${buildChips()}</div>
+<div class="note blue">Pull the image: <code>docker pull ${img}</code></div>
+<div class="done-links">
+  <a class="done-link" href="https://github.com/smol-kitten/web-core" target="_blank" rel="noopener">📦 View on GitHub →</a>
+  <a class="done-link" href="https://github.com/smol-kitten?tab=packages&repo_name=web-core" target="_blank" rel="noopener">📋 Browse packages →</a>
+</div>`;
+  },
+};
+
+/* ─────────────────────────────────────────
+   Toggle row helper
+───────────────────────────────────────── */
+function tog(key, label, desc){
+  return `<div class="tog-row">
+    <div class="tog-info">
+      <div class="tog-lbl">${label}</div>
+      <div class="tog-desc">${desc}</div>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="t-${key}" ${S[key]?'checked':''}
+        onchange="S['${key}']=this.checked;render()">
+      <span class="ttrack"></span>
+    </label>
+  </div>`;
+}
+
+/* ─────────────────────────────────────────
+   Preset tables
+───────────────────────────────────────── */
+const PRESETS = {
+  default:{PHP_MEMORY_LIMIT:'256M',PHP_MAX_EXECUTION_TIME:'60s',PHP_UPLOAD_MAX_FILESIZE:'20M',PHP_FPM_PM_MAX_CHILDREN:'20'},
+  API:    {PHP_MEMORY_LIMIT:'256M',PHP_MAX_EXECUTION_TIME:'30s',PHP_UPLOAD_MAX_FILESIZE:'10M',PHP_FPM_PM_MAX_CHILDREN:'50',RATE_LIMIT:'true'},
+  SHOP:   {PHP_MEMORY_LIMIT:'512M',PHP_MAX_EXECUTION_TIME:'60s',PHP_UPLOAD_MAX_FILESIZE:'20M',PHP_FPM_PM_MAX_CHILDREN:'30',SESSION_COOKIE_SECURE:'On'},
+  STATIC: {PHP_MEMORY_LIMIT:'128M',PHP_MAX_EXECUTION_TIME:'15s',PHP_UPLOAD_MAX_FILESIZE:'2M', PHP_FPM_PM_MAX_CHILDREN:'10'},
+  CMS:    {PHP_MEMORY_LIMIT:'384M',PHP_MAX_EXECUTION_TIME:'90s',PHP_UPLOAD_MAX_FILESIZE:'64M',PHP_FPM_PM_MAX_CHILDREN:'25'},
+};
+function presetRows(id){
+  const v = PRESETS[id]||PRESETS.default;
+  return Object.entries(v).map(([k,val])=>
+    `<div class="preset-row"><span class="pk">${k}</span><span class="pv">${val}</span></div>`
+  ).join('');
+}
+
+/* ─────────────────────────────────────────
+   AUTO calculator (mirrors shell auto_tune)
+───────────────────────────────────────── */
+function calcAuto(){
+  const {autoCores:c,autoRam:r,autoWorkerMb:m,autoReservePct:p} = S;
+  const avail = Math.max(64, Math.floor(r*(100-p)/100));
+  const byRam = Math.max(1, Math.floor(avail/m));
+  const byCpu = Math.max(1, c*4);
+  const calc  = Math.min(byRam,byCpu);
+  return {
+    calc, start:Math.max(2,Math.floor(calc/4)),
+    minSp:Math.max(1,Math.floor(calc/8)), maxSp:Math.max(2,Math.floor(calc/2)),
+    ngConns:Math.min(65535,Math.max(1024,c*1024)), memLimit:Math.max(64,m*2),
+  };
+}
+
+function fmtInterval(s){
+  if(s>=86400&&s%86400===0) return `every ${s/86400}d`;
+  if(s>=3600 &&s%3600 ===0) return `every ${s/3600}h`;
+  if(s>=60   &&s%60   ===0) return `every ${s/60}min`;
+  return `${s}s`;
+}
+
+/* ─────────────────────────────────────────
+   Image name
+───────────────────────────────────────── */
+function imageName(){
+  const t = S.imageType;
+  if(!t) return 'ghcr.io/smol-kitten/<image>:<tag>';
+  if(t==='bun')    return 'ghcr.io/smol-kitten/bun:latest';
+  if(t==='static') return `ghcr.io/smol-kitten/static:${S.ubuntu}`;
+  const suffix = ['imagick','redis','memcached','ssh2','cron'].filter(e=>S.exts[e]).map(e=>`-${e}`).join('');
+  return `ghcr.io/smol-kitten/${t}:${S.ubuntu}${suffix}`;
+}
+
+/* ─────────────────────────────────────────
+   Non-default env var collector
+───────────────────────────────────────── */
+function envVars(){
+  const e={}, t=S.imageType;
+  if(!t) return e;
+
+  if(t==='bun'){
+    if(S.bunPort!==3000)          e.PORT      = String(S.bunPort);
+    if(S.bunNodeEnv!=='production')e.NODE_ENV = S.bunNodeEnv;
+    if(S.bunEntry!=='server.js')  e.BUN_ENTRY = S.bunEntry;
+    if(S.tz!=='UTC')              e.TZ        = S.tz;
+    return e;
+  }
+  if(t==='static'){
+    if(S.tz!=='UTC')     e.TZ               = S.tz;
+    if(S.webPort!==80)   e.WEB_PORT         = String(S.webPort);
+    if(!S.spaFallback)   e.SPA_FALLBACK     = 'false';
+    if(!S.secHeaders)    e.SECURITY_HEADERS = 'false';
+    if(S.forceHttps)     e.FORCE_HTTPS      = 'true';
+    if(S.cspHeader)      e.CSP_HEADER       = S.cspHeader;
+    return e;
+  }
+  // PHP types
+  if(S.tz!=='UTC')    e.TZ       = S.tz;
+  if(S.webPort!==80)  e.WEB_PORT = String(S.webPort);
+  if(S.quickset!=='default') e.QUICK_SET = S.quickset;
+  if(S.quickset==='AUTO'){
+    e.WORKER_MEMORY_MB = String(S.autoWorkerMb);
+    if(S.autoReservePct!==30) e.RESERVE_RAM_PERCENT = String(S.autoReservePct);
+    if(S.autoRpm>0)   e.EXPECTED_REQUESTS_PER_MIN  = String(S.autoRpm);
+    if(S.autoUsers>0) e.EXPECTED_CONCURRENT_USERS  = String(S.autoUsers);
+  }
+  if(!S.secHeaders)           e.SECURITY_HEADERS = 'false';
+  if(S.forceHttps)            e.FORCE_HTTPS      = 'true';
+  if(S.rateLimit&&t==='nginx'){
+    e.RATE_LIMIT = 'true';
+    if(S.rateLimitRps!==10)   e.RATE_LIMIT_RPS   = String(S.rateLimitRps);
+    if(S.rateLimitBurst!==20) e.RATE_LIMIT_BURST  = String(S.rateLimitBurst);
+  }
+  if(S.cspHeader)                   e.CSP_HEADER = S.cspHeader;
+  if(S.phpDisableDangerous)         e.PHP_DISABLE_DANGEROUS_FUNCTIONS = 'true';
+  if(S.sessionSecure)               e.SESSION_COOKIE_SECURE = 'On';
+  if(!S.healthWorker)               e.HEALTH_WORKER = 'false';
+  if(S.healthWorker&&S.healthInterval!==86400) e.HEALTH_WORKER_INTERVAL = String(S.healthInterval);
+  if(S.otelEnabled){
+    e.OTEL_ENABLED      = 'true';
+    e.OTEL_ENDPOINT     = S.otelEndpoint;
+    e.OTEL_SERVICE_NAME = S.otelServiceName;
+    if(S.otelInterval!==60)    e.OTEL_INTERVAL        = String(S.otelInterval);
+    if(S.otelHeaders)          e.OTEL_HEADERS         = S.otelHeaders;
+    if(S.otelResourceAttrs)    e.OTEL_RESOURCE_ATTRS  = S.otelResourceAttrs;
+  }
+  return e;
+}
+
+/* ─────────────────────────────────────────
+   docker-compose.yml generator
+───────────────────────────────────────── */
+function genCompose(){
+  const t=S.imageType;
+  if(!t) return '# ← Select an image type to generate your config';
+  const img=imageName(), vars=envVars();
+  const port = t==='bun'?S.bunPort:80;
+  const vol  = t==='bun'?'./:/app': t==='static'?'./dist:/var/www/html:ro':'./app:/var/www/html';
+  const lines = [
+    'services:','  web:',
+    `    image: ${img}`,
+    '    restart: unless-stopped',
+    '    ports:',
+    `      - "${port}:${port}"`,
+  ];
+  const ev = Object.entries(vars);
+  if(ev.length){
+    lines.push('    environment:');
+    for(const [k,v] of ev) lines.push(`      ${k}: ${JSON.stringify(v)}`);
+  } else {
+    lines.push('    # Using all defaults — add environment: block to customize');
+  }
+  lines.push('    volumes:',`      - ${vol}`);
+  return lines.join('\n');
+}
+
+/* ─────────────────────────────────────────
+   docker run generator
+───────────────────────────────────────── */
+function genRun(){
+  const t=S.imageType;
+  if(!t) return '# ← Select an image type';
+  const img=imageName(), vars=envVars();
+  const port = t==='bun'?S.bunPort:80;
+  const vol  = t==='bun'?'$(pwd):/app':t==='static'?'$(pwd)/dist:/var/www/html:ro':'$(pwd)/app:/var/www/html';
+  const lines = [`docker run -d \\`, `  -p ${port}:${port} \\`];
+  for(const [k,v] of Object.entries(vars)) lines.push(`  -e ${k}=${JSON.stringify(v)} \\`);
+  lines.push(`  -v ${vol} \\`, `  ${img}`);
+  return lines.join('\n');
+}
+
+/* ─────────────────────────────────────────
+   Syntax highlighting
+───────────────────────────────────────── */
+function hl(txt, isShell){
+  const e = txt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  if(isShell) return e
+    .replace(/^(#.*)$/gm,'<span class="yc">$1</span>')
+    .replace(/(-e\s+)(\w+)=/g,'$1<span class="yk">$2</span>=')
+    .replace(/(ghcr\.io\/[^\s\\]+)/g,'<span class="ys">$1</span>');
+  return e
+    .replace(/^(\s*#.*)$/gm,'<span class="yc">$1</span>')
+    .replace(/^(\s+)([a-zA-Z_][\w-]*)(:\s)/gm,'$1<span class="yk">$2</span>$3')
+    .replace(/^([a-zA-Z_][\w-]*)(:\s)/gm,'<span class="yk">$1</span>$2')
+    .replace(/: (".*?"|-?\d+|true|false)(\s*$)/gm,
+      (_,v)=>`: <span class="${/^["']/.test(v)?'ys':'yn'}">${v}</span>`);
+}
+
+/* ─────────────────────────────────────────
+   Preview update
+───────────────────────────────────────── */
+function updatePreview(){
+  const isShell = previewTab==='run';
+  const raw = isShell ? genRun() : genCompose();
+  document.getElementById('preview').innerHTML = hl(raw, isShell);
+}
+
+function switchTab(btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  previewTab = btn.dataset.tab;
+  updatePreview();
+}
+
+function copyPreview(){
+  const raw = previewTab==='run' ? genRun() : genCompose();
+  const btn = document.getElementById('copy-btn');
+  const done = ()=>{ btn.textContent='Copied!'; btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent='Copy'; btn.classList.remove('copied'); },1500); };
+  if(navigator.clipboard) navigator.clipboard.writeText(raw).then(done);
+  else{ const ta=document.createElement('textarea'); ta.value=raw;
+    ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(); }
+}
+
+/* ─────────────────────────────────────────
+   Navigation
+───────────────────────────────────────── */
+function pick(id){ S.imageType=id; stepIdx=0; render(); }
+
+document.getElementById('btn-next').addEventListener('click',()=>{
+  const f=flow();
+  if(stepIdx===f.length-1){ stepIdx=0; S.imageType=null; }
+  else stepIdx=Math.min(stepIdx+1,f.length-1);
+  render(); window.scrollTo({top:0,behavior:'smooth'});
+});
+document.getElementById('btn-back').addEventListener('click',()=>{
+  stepIdx=Math.max(0,stepIdx-1); render(); window.scrollTo({top:0,behavior:'smooth'});
+});
+
+/* ─────────────────────────────────────────
+   Done step: summary chips
+───────────────────────────────────────── */
+function buildChips(){
+  const t=TYPES.find(x=>x.id===S.imageType); if(!t) return '';
+  const c=[`<span class="chip hi">${t.icon} ${t.name}</span>`];
+  if(t.php||S.imageType==='static') c.push(`<span class="chip">Ubuntu ${S.ubuntu}</span>`);
+  if(t.php){
+    const exts=Object.entries(S.exts).filter(([,v])=>v).map(([k])=>k);
+    if(exts.length) c.push(`<span class="chip">${exts.join(', ')}</span>`);
+    if(S.quickset!=='default') c.push(`<span class="chip hi">QUICK_SET: ${S.quickset}</span>`);
+    if(S.secHeaders) c.push('<span class="chip">Security headers</span>');
+    if(S.healthWorker) c.push('<span class="chip">Health worker</span>');
+    if(S.otelEnabled) c.push('<span class="chip">OpenTelemetry</span>');
+  }
+  if(S.imageType==='bun'){
+    c.push(`<span class="chip">Port ${S.bunPort}</span>`);
+    c.push(`<span class="chip">${S.bunNodeEnv}</span>`);
+  }
+  return c.join('');
+}
+
+/* ─────────────────────────────────────────
+   Boot
+───────────────────────────────────────── */
+render();
+</script>
+</body>
+</html>

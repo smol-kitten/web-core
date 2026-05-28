@@ -1,0 +1,40 @@
+# Static / SPA Server
+# Lightweight nginx image for serving pre-built frontend assets.
+# No PHP — optimized for React, Vue, Angular, Svelte, and any other SPA framework.
+# Includes SPA client-side routing fallback (try_files → index.html).
+#
+# Environment variables:
+#   WEB_PORT         - listen port (default: 80)
+#   SPA_FALLBACK     - serve index.html for unknown paths (default: true)
+#   SECURITY_HEADERS - inject security response headers (default: true)
+#   FORCE_HTTPS      - add Strict-Transport-Security header (default: false)
+#   CSP_HEADER       - Content-Security-Policy value (default: empty/disabled)
+#   TZ               - container timezone (default: UTC)
+#
+# Build args:
+#   UBUNTU_VERSION   - Ubuntu base version (default: 24.04)
+
+ARG UBUNTU_VERSION=24.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        nginx \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -f /etc/nginx/sites-enabled/default && \
+    useradd -r -s /sbin/nologin www-data 2>/dev/null || true && \
+    mkdir -p /var/www/html /run/nginx
+
+COPY src/nginx/nginx-static.conf     /etc/nginx/nginx.conf
+COPY src/nginx/site-static.conf      /etc/nginx/sites-enabled/00-static.conf
+COPY src/docker-entrypoint-static.sh /docker-entrypoint.sh
+
+RUN chmod +x /docker-entrypoint.sh
+
+WORKDIR /var/www/html
+EXPOSE 80
+CMD ["/docker-entrypoint.sh"]
