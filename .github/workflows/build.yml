@@ -99,7 +99,7 @@ jobs:
       fail-fast: false
       max-parallel: 20
       matrix:
-        server:    [ nginx, apache2 ]
+        server:    [ nginx, apache2, caddy ]
         version:   [ "24.04", "25.04", "25.10" ]
         imagick:   [ "true", "false" ]
         redis:     [ "true", "false" ]
@@ -167,7 +167,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        server:  [ nginx, apache2 ]
+        server:  [ nginx, apache2, caddy ]
         version: [ "24.04", "25.04" ]
     steps:
       - name: Run Trivy scan
@@ -180,10 +180,72 @@ jobs:
           ignore-unfixed: true
 
   # ------------------------------------------------------------------
+  # Build static / SPA images (no PHP, all ubuntu versions)
+  # ------------------------------------------------------------------
+  build-static:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [ "24.04", "25.04", "25.10" ]
+    continue-on-error: ${{ matrix.version == '25.10' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Ensure buildx cache directory
+        run: |
+          sudo mkdir -p /home/runner/.cache/buildx/static-${{ matrix.version }}
+          sudo chmod -R 0777 /home/runner/.cache/buildx || true
+      - name: Build and push static image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile_static
+          push: true
+          pull: false
+          tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
+          build-args: UBUNTU_VERSION=${{ matrix.version }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/static-${{ matrix.version }}
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/static-${{ matrix.version }},mode=max
+
+  # ------------------------------------------------------------------
+  # Build Bun edge runtime image
+  # ------------------------------------------------------------------
+  build-bun:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Ensure buildx cache directory
+        run: |
+          sudo mkdir -p /home/runner/.cache/buildx/bun
+          sudo chmod -R 0777 /home/runner/.cache/buildx || true
+      - name: Build and push Bun image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile_bun
+          push: true
+          pull: false
+          tags: ghcr.io/${{ github.repository_owner }}/bun:latest
+          cache-from: type=local,src=/home/runner/.cache/buildx/bun
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/bun,mode=max
+
+  # ------------------------------------------------------------------
   # Remove untagged container versions from the registry
   # ------------------------------------------------------------------
   cleanup-untagged:
-    needs: build-variants
+    needs: [ build-variants, build-static, build-bun ]
     runs-on: self-hosted
     if: always()
     steps:
@@ -192,7 +254,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const packages = ['nginx', 'apache2', 'prep_base'];
+            const packages = ['nginx', 'apache2', 'caddy', 'static', 'bun', 'prep_base'];
             const owner = context.repo.owner;
 
             async function getVersions(packageName) {

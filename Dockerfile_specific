@@ -5,7 +5,8 @@
 # Build args:
 #   BUILDER_IMAGE      - prep_base image with compiled PHP (required)
 #   UBUNTU_VERSION     - Ubuntu version for the runtime base (default 24.04)
-#   SERVER_TYPE        - "nginx" or "apache2" (default nginx)
+#   SERVER_TYPE        - "nginx", "apache2", or "caddy" (default nginx)
+#   CADDY_VERSION      - Caddy release to install when SERVER_TYPE=caddy (default 2.9.1)
 #   INSTALL_IMAGICK    - include imagick extension (default true)
 #   INSTALL_SSH2       - include ssh2 extension (default false)
 #   INSTALL_REDIS      - include redis extension (default false)
@@ -23,6 +24,7 @@ FROM ubuntu:${UBUNTU_VERSION}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SERVER_TYPE=nginx
+ARG CADDY_VERSION=2.9.1
 ARG INSTALL_IMAGICK=true
 ARG INSTALL_SSH2=false
 ARG INSTALL_REDIS=false
@@ -56,11 +58,23 @@ RUN apt-get update && \
         $(apt-cache search --names-only '^libgd[0-9]+(t64)?$'   | awk '{print $1}' | head -1 || echo "libgd3") && \
     rm -rf /var/lib/apt/lists/*
 
-# Install web server + mod_headers for Apache security headers
+# Install web server
 RUN apt-get update && \
     if [ "$SERVER_TYPE" = "apache2" ]; then \
         apt-get install -y --no-install-recommends apache2 && \
         a2enmod proxy_fcgi setenvif rewrite headers; \
+    elif [ "$SERVER_TYPE" = "caddy" ]; then \
+        ARCH="$(dpkg --print-architecture)" && \
+        case "$ARCH" in \
+            amd64) CARCH="amd64" ;; \
+            arm64) CARCH="arm64" ;; \
+            *) echo "Unsupported arch: $ARCH" >&2 && exit 1 ;; \
+        esac && \
+        curl -fsSL \
+            "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${CARCH}.tar.gz" \
+            | tar -xzC /usr/local/bin caddy && \
+        chmod +x /usr/local/bin/caddy && \
+        mkdir -p /etc/caddy /var/log/caddy; \
     else \
         apt-get install -y --no-install-recommends nginx; \
     fi && \
@@ -131,16 +145,18 @@ RUN mkdir -p /var/www/html /var/run/php /var/log/php-fpm /run/nginx && \
     chown -R www-data:www-data /var/www/html /var/run/php /var/log/php-fpm
 
 # Copy all entrypoint scripts, configs, and test page
-COPY src/entrypoint-common.sh       /docker-entrypoint-common.sh
-COPY src/auto-tune.sh               /docker-auto-tune.sh
-COPY src/health-worker.sh           /docker-health-worker.sh
-COPY src/telemetry.sh               /docker-telemetry.sh
-COPY src/nginx/nginx.conf           /tmp/nginx/nginx.conf
-COPY src/nginx/site.conf            /tmp/nginx/site.conf
-COPY src/apache/000-default.conf    /tmp/apache/000-default.conf
+COPY src/entrypoint-common.sh          /docker-entrypoint-common.sh
+COPY src/auto-tune.sh                  /docker-auto-tune.sh
+COPY src/health-worker.sh              /docker-health-worker.sh
+COPY src/telemetry.sh                  /docker-telemetry.sh
+COPY src/nginx/nginx.conf              /tmp/nginx/nginx.conf
+COPY src/nginx/site.conf               /tmp/nginx/site.conf
+COPY src/apache/000-default.conf       /tmp/apache/000-default.conf
+COPY src/caddy/Caddyfile               /tmp/caddy/Caddyfile
 COPY src/docker-entrypoint-nginx.sh   /tmp/entrypoint-nginx.sh
 COPY src/docker-entrypoint-apache.sh  /tmp/entrypoint-apache.sh
-COPY src/index.php                  /var/www/html/index.php
+COPY src/docker-entrypoint-caddy.sh   /tmp/entrypoint-caddy.sh
+COPY src/index.php                     /var/www/html/index.php
 
 # Configure web server and activate the correct entrypoint
 RUN chmod +x /docker-entrypoint-common.sh /docker-auto-tune.sh \
@@ -153,6 +169,10 @@ RUN chmod +x /docker-entrypoint-common.sh /docker-auto-tune.sh \
         a2enconf php8.4-fpm && \
         rm -f /var/www/html/index.html && \
         cp /tmp/entrypoint-apache.sh /docker-entrypoint.sh; \
+    elif [ "$SERVER_TYPE" = "caddy" ]; then \
+        mkdir -p /etc/caddy && \
+        cp /tmp/caddy/Caddyfile /etc/caddy/Caddyfile && \
+        cp /tmp/entrypoint-caddy.sh /docker-entrypoint.sh; \
     else \
         mkdir -p /etc/nginx/sites-enabled && \
         cp /tmp/nginx/nginx.conf /etc/nginx/nginx.conf && \
@@ -161,7 +181,7 @@ RUN chmod +x /docker-entrypoint-common.sh /docker-auto-tune.sh \
         cp /tmp/entrypoint-nginx.sh /docker-entrypoint.sh; \
     fi && \
     chmod +x /docker-entrypoint.sh && \
-    rm -rf /tmp/nginx /tmp/apache /tmp/entrypoint-*.sh
+    rm -rf /tmp/nginx /tmp/apache /tmp/caddy /tmp/entrypoint-*.sh
 
 WORKDIR /var/www/html
 

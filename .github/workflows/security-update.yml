@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       max-parallel: 20
       matrix:
-        server:    [ nginx, apache2 ]
+        server:    [ nginx, apache2, caddy ]
         version:   [ "24.04", "25.04", "25.10" ]
         imagick:   [ "true", "false" ]
         redis:     [ "true", "false" ]
@@ -73,14 +73,60 @@ jobs:
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }}
           cache-to:   type=local,dest=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }},mode=max
 
-  # Scan after rebuild
-  scan-images:
-    needs: rebuild-runtimes
+  # Daily rebuild of static/SPA images (OS security patches)
+  rebuild-static:
     runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
-        server:  [ nginx, apache2 ]
+        version: [ "24.04", "25.04", "25.10" ]
+    continue-on-error: ${{ matrix.version == '25.10' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rebuild static image with latest OS patches
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile_static
+          push: true
+          pull: true
+          tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
+          build-args: UBUNTU_VERSION=${{ matrix.version }}
+
+  # Daily rebuild of Bun image (OS security patches)
+  rebuild-bun:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rebuild Bun image with latest OS patches
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile_bun
+          push: true
+          pull: true
+          tags: ghcr.io/${{ github.repository_owner }}/bun:latest
+
+  # Scan after rebuild
+  scan-images:
+    needs: [ rebuild-runtimes, rebuild-static, rebuild-bun ]
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        server:  [ nginx, apache2, caddy ]
         version: [ "24.04", "25.04" ]
     steps:
       - name: Run Trivy scan

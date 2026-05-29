@@ -1,0 +1,57 @@
+# Bun Edge Runtime
+# Fast JavaScript/TypeScript runtime for APIs, edge functions, and SSR apps.
+# Mount your application to /app and set BUN_ENTRY to your entry file.
+#
+# Environment variables:
+#   PORT       - listen port (default: 3000)
+#   NODE_ENV   - runtime environment (default: production)
+#   BUN_ENTRY  - entry file relative to /app (default: server.js)
+#   TZ         - container timezone (default: UTC)
+#
+# Build args:
+#   UBUNTU_VERSION - Ubuntu base version (default: 24.04)
+#   BUN_VERSION    - Bun release version (default: 1.2.13)
+
+ARG UBUNTU_VERSION=24.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG BUN_VERSION=1.2.13
+
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        unzip && \
+    ARCH="$(dpkg --print-architecture)" && \
+    case "$ARCH" in \
+        amd64) BUN_ARCH="x64" ;; \
+        arm64) BUN_ARCH="aarch64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2 && exit 1 ;; \
+    esac && \
+    curl -fsSL \
+        "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${BUN_ARCH}.zip" \
+        -o /tmp/bun.zip && \
+    unzip -q /tmp/bun.zip -d /tmp/bun-dl && \
+    mv "/tmp/bun-dl/bun-linux-${BUN_ARCH}/bun" /usr/local/bin/bun && \
+    rm -rf /tmp/bun.zip /tmp/bun-dl && \
+    chmod +x /usr/local/bin/bun && \
+    apt-get remove -y unzip && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /app
+
+COPY src/docker-entrypoint-bun.sh /docker-entrypoint.sh
+COPY src/bun/server.js             /app/server.js
+
+RUN chmod +x /docker-entrypoint.sh
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV BUN_ENTRY=server.js
+
+WORKDIR /app
+EXPOSE 3000
+CMD ["/docker-entrypoint.sh"]
