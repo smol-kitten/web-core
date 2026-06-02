@@ -24,6 +24,11 @@ jobs:
         memcached: [ "true", "false" ]
         ssh2:      [ "true", "false" ]
         cron:      [ "true", "false" ]
+        exclude:
+          # caddy on 25.10 is experimental-on-experimental; excluding it keeps
+          # the matrix at exactly 256 configs (GitHub's hard limit).
+          - server: caddy
+            version: "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v4
