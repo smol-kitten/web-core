@@ -51,7 +51,6 @@ jobs:
           [ "${{ matrix.cron }}"      = "true" ] && TAG="${TAG}-cron"
           echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}" \
             >> "$GITHUB_OUTPUT"
-          echo "cache_key=nginx-${{ matrix.version }}" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Rebuild nginx image with latest OS patches
@@ -69,8 +68,8 @@ jobs:
             INSTALL_MEMCACHED=${{ matrix.memcached }}
             INSTALL_SSH2=${{ matrix.ssh2 }}
             INSTALL_CRON=${{ matrix.cron }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }}
-          cache-to:   type=local,dest=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }},mode=max
+          cache-from: type=local,src=/home/runner/.cache/buildx/nginx-${{ matrix.version }}
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/nginx-${{ matrix.version }},mode=max
 
   # Daily rebuild of static/SPA images (OS security patches)
   rebuild-static:
