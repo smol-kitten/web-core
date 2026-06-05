@@ -9,11 +9,11 @@
 #   TZ         - container timezone (default: UTC)
 #
 # Build args:
-#   UBUNTU_VERSION - Ubuntu base version (default: 24.04)
+#   UBUNTU_IMAGE   - Ubuntu base image from GHCR mirror (default: ghcr.io/smol-kitten/ubuntu-base:24.04)
 #   BUN_VERSION    - Bun release version (default: 1.2.13)
 
-ARG UBUNTU_VERSION=24.04
-FROM ubuntu:${UBUNTU_VERSION}
+ARG UBUNTU_IMAGE=ghcr.io/smol-kitten/ubuntu-base:24.04
+FROM ${UBUNTU_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -51,6 +51,9 @@ RUN chmod +x /docker-entrypoint.sh
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV BUN_ENTRY=server.js
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:${PORT:-3000}/health > /dev/null || exit 1
 
 WORKDIR /app
 EXPOSE 3000
