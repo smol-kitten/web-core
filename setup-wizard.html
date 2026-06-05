@@ -220,11 +220,9 @@ let previewTab = 'compose';
    Image types
 ───────────────────────────────────────── */
 const TYPES = [
-  {id:'nginx',   name:'nginx + PHP',  icon:'🌐', badge:'Most Popular', desc:'High-performance reverse proxy with PHP-FPM', php:true},
-  {id:'apache2', name:'Apache + PHP', icon:'🪶', badge:'',             desc:'Classic LAMP-style with Apache MPM event',   php:true},
-  {id:'caddy',   name:'Caddy + PHP',  icon:'⚡', badge:'New',          desc:'Modern server with automatic HTTPS + PHP-FPM',php:true},
-  {id:'static',  name:'Static / SPA', icon:'📦', badge:'New',          desc:'Lightweight nginx for React/Vue/Angular builds',php:false},
-  {id:'bun',     name:'Bun Edge',     icon:'🐇', badge:'New',          desc:'Fast JS/TS runtime for APIs and SSR apps',    php:false},
+  {id:'nginx',   name:'nginx + PHP',  icon:'🌐', badge:'', desc:'High-performance nginx with PHP-FPM, built-in health monitoring, and OTLP metrics', php:true},
+  {id:'static',  name:'Static / SPA', icon:'📦', badge:'', desc:'Lightweight nginx for React/Vue/Angular builds with SPA routing fallback',          php:false},
+  {id:'bun',     name:'Bun Edge',     icon:'🐇', badge:'', desc:'Fast JS/TS runtime for APIs, edge functions, and SSR apps',                         php:false},
 ];
 
 /* ─────────────────────────────────────────
@@ -232,8 +230,6 @@ const TYPES = [
 ───────────────────────────────────────── */
 const FLOWS = {
   nginx:   ['type','version','performance','security','features','done'],
-  apache2: ['type','version','performance','security','features','done'],
-  caddy:   ['type','version','performance','security','features','done'],
   static:  ['type','version-static','security-static','done'],
   bun:     ['type','runtime','done'],
   _none:   ['type'],
@@ -437,14 +433,12 @@ ${S.quickset==='AUTO'?`
   },
 
   security(){
-    const isNginx = S.imageType === 'nginx';
-    const isCaddy = S.imageType === 'caddy';
     return `<h2 class="step-title">Security hardening</h2>
 <p class="step-sub">Harden the web server and PHP runtime configuration.</p>
 <div class="toggle-list">
   ${tog('secHeaders','Security headers','X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy')}
-  ${tog('forceHttps','HTTPS redirect (HSTS)','Adds Strict-Transport-Security. Deploy behind a TLS terminator or use Caddy auto-HTTPS.')}
-  ${isNginx?`<div>
+  ${tog('forceHttps','HTTPS redirect (HSTS)','Adds Strict-Transport-Security. Deploy behind a TLS terminator.')}
+  <div>
     ${tog('rateLimit','Rate limiting','Limits requests per IP via nginx — protects against abuse and scrapers.')}
     ${S.rateLimit?`<div class="tog-sub">
       <div class="in-row" style="margin-top:6px">
@@ -456,9 +450,7 @@ ${S.quickset==='AUTO'?`
           onchange="S.rateLimitBurst=+this.value||20;updatePreview()">
       </div>
     </div>`:''}
-  </div>`:
-  isCaddy?`<div class="note">Rate limiting for Caddy requires the <code>caddy-ratelimit</code> plugin (not included).</div>`:
-  `<div class="note">Rate limiting is not available for Apache — use a load balancer or WAF upstream.</div>`}
+  </div>
   ${tog('phpDisableDangerous','Disable dangerous PHP functions','Disables: exec, shell_exec, system, proc_open, popen, passthru, show_source, phpinfo')}
   ${tog('sessionSecure','Secure session cookies','Sets SESSION_COOKIE_SECURE=On — requires HTTPS to function.')}
 </div>

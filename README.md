@@ -1,4 +1,4 @@
-# nginx & Apache PHP Docker Images
+# nginx PHP Docker Images
 
 [![Build Docker Images](https://github.com/smol-kitten/web-core/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/smol-kitten/web-core/actions/workflows/build.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.4.x-777BB4?logo=php&logoColor=white)](https://www.php.net/)
@@ -7,13 +7,13 @@
 [![License](https://img.shields.io/github/license/smol-kitten/web-core)](LICENSE)
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-packages-blue?logo=docker)](https://github.com/smol-kitten?tab=packages&repo_name=web-core)
 
-Production-ready Docker images for **Nginx** and **Apache** with **PHP 8.4** compiled from source — no third-party PPAs, fully configurable via environment variables, automatic security updates, built-in health monitoring, and optional OpenTelemetry metrics.
+Production-ready Docker images for **nginx + PHP 8.4** compiled from source — no third-party PPAs, fully configurable via environment variables, automatic security updates, built-in health monitoring, HEALTHCHECK on every image, and optional OpenTelemetry metrics.
 
 ## Overview
 
 PHP 8.4.x is compiled from source to support Ubuntu 24.04, 25.04, and 25.10 without depending on sury.org or other PPAs. A two-stage build pipeline separates the heavy compile step (builder) from the lean runtime image. The PHP version is auto-resolved from php.net on every build so you always get the latest 8.4.x patch.
 
-Both nginx and apache images share the same entrypoint infrastructure: QUICK_SET presets, a resource-aware AUTO calculator, daily health monitoring, and opt-in OpenTelemetry metrics export.
+Three image types are available: `nginx` (PHP + nginx), `static` (nginx-only SPA server), and `bun` (Bun.js edge runtime).
 
 ## Key Features
 
@@ -23,11 +23,28 @@ Both nginx and apache images share the same entrypoint infrastructure: QUICK_SET
 - **QUICK_SET presets** — one env var tunes the stack for API / SHOP / STATIC / CMS / AUTO workloads
 - **AUTO resource calculator** — derives optimal FPM workers and memory limits from actual CPU/RAM
 - **Security hardening** — rate limiting, HSTS, CSP, security headers, PHP function blocking, all opt-in
+- **Built-in HEALTHCHECK** — all images have Docker HEALTHCHECK configured out of the box
 - **Daily health worker** — background daemon logs memory, load, disk, FPM, and OPcache health
 - **OpenTelemetry metrics** — opt-in push to any OTLP/HTTP endpoint (Grafana, Datadog, New Relic, self-hosted)
-- **Automatic OS security updates** — daily rebuild workflow patches base OS packages within 24 h
+- **Tiered build schedule** — monthly base mirror → weekly PHP compile → daily OS security patches
 - **Trivy scanning** — container vulnerability scan runs after every build
 - **Dependabot** — GitHub Actions dependencies auto-updated weekly
+
+## Build Schedule
+
+Builds use a three-tier cache hierarchy that minimises Docker Hub pulls and build time:
+
+```
+Docker Hub ──[monthly]──▶ ubuntu-base (GHCR mirror)
+                               │
+                            [weekly]──▶ prep_base  (PHP compiled from source)
+                               │
+                            [daily]──▶  nginx / static / bun  (apt security patches)
+```
+
+- **Monthly** (`monthly-base.yml`): mirrors `ubuntu:24.04`, `25.04`, `25.10` to `ghcr.io/smol-kitten/ubuntu-base`. This is the only point that touches Docker Hub.
+- **Weekly** (`build.yml`, Sunday 04:00 UTC): compiles PHP from source using the ubuntu-base mirror; builds all runtime variants.
+- **Daily** (`security-update.yml`, 02:00 UTC): rebuilds runtime images from the GHCR ubuntu-base to apply OS-level apt patches within 24 hours, without re-compiling PHP.
 
 ## Build Pipeline
 
@@ -41,30 +58,41 @@ prep_base:24.04   prep_base:25.04   prep_base:25.10
 
 ### Stage 2 — runtime variants
 
-Copies only the required binaries and libraries from the builder. Extension `.so` files for disabled extensions are removed to keep the image lean. All 192 combinations (2 servers × 3 Ubuntu versions × 2⁵ optional extensions) are built in parallel.
+Copies only the required binaries and libraries from the builder. Extension `.so` files for disabled extensions are removed to keep the image lean. All 96 nginx combinations (3 Ubuntu versions × 2⁵ optional extensions) are built in parallel.
 
 ```
-nginx:24.04                  apache2:24.04
-nginx:24.04-redis            apache2:24.04-redis
-nginx:24.04-imagick          apache2:24.04-imagick
-nginx:24.04-redis-imagick    apache2:24.04-redis-imagick
+nginx:24.04                  nginx:25.04
+nginx:24.04-redis            nginx:25.04-redis
+nginx:24.04-imagick          nginx:25.04-imagick
+nginx:24.04-redis-imagick    nginx:25.04-redis-imagick
 ... (all combinations for 24.04, 25.04, 25.10)
 ```
 
 ## Image Tags
 
-**Base variants (no optional extensions):**
+### nginx + PHP
 
-| Tag | Server | Ubuntu |
-|-----|--------|--------|
-| `nginx:24.04` | Nginx | 24.04 LTS |
-| `nginx:25.04` | Nginx | 25.04 |
-| `nginx:25.10` | Nginx | 25.10 (experimental) |
-| `apache2:24.04` | Apache | 24.04 LTS |
-| `apache2:25.04` | Apache | 25.04 |
-| `apache2:25.10` | Apache | 25.10 (experimental) |
+| Tag | Ubuntu |
+|-----|--------|
+| `nginx:24.04` | 24.04 LTS |
+| `nginx:25.04` | 25.04 |
+| `nginx:25.10` | 25.10 (experimental) |
 
 Tags are suffixed with any combination of `-imagick`, `-redis`, `-memcached`, `-ssh2`, `-cron`. For example: `nginx:24.04-redis-imagick`.
+
+### Static / SPA
+
+| Tag | Ubuntu |
+|-----|--------|
+| `static:24.04` | 24.04 LTS |
+| `static:25.04` | 25.04 |
+| `static:25.10` | 25.10 (experimental) |
+
+### Bun Edge Runtime
+
+| Tag |
+|-----|
+| `bun:latest` |
 
 ## Built-in PHP Extensions
 
@@ -96,21 +124,26 @@ Any combination is supported: `nginx:24.04-redis-memcached-imagick-cron`
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `BASE_IMAGE` | `ubuntu:24.04` | Ubuntu base image |
+| `BASE_IMAGE` | `ghcr.io/smol-kitten/ubuntu-base:24.04` | Ubuntu base image (from GHCR mirror) |
 | `PHP_VERSION` | `8.4.6` | PHP version to compile (overridden by CI auto-resolve) |
 
-### Dockerfile_specific
+### Dockerfile_nginx
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `BUILDER_IMAGE` | `prep_base:24.04` | Builder image with compiled PHP |
-| `UBUNTU_VERSION` | `24.04` | Ubuntu version for the runtime base |
-| `SERVER_TYPE` | `nginx` | Web server (`nginx` or `apache2`) |
+| `BUILDER_IMAGE` | `ghcr.io/smol-kitten/prep_base:24.04` | Builder image with compiled PHP |
+| `UBUNTU_IMAGE` | `ghcr.io/smol-kitten/ubuntu-base:24.04` | Ubuntu base image from GHCR mirror |
 | `INSTALL_IMAGICK` | `true` | Include imagick |
 | `INSTALL_REDIS` | `false` | Include Redis |
 | `INSTALL_MEMCACHED` | `false` | Include Memcached |
 | `INSTALL_SSH2` | `false` | Include SSH2 |
 | `INSTALL_CRON` | `false` | Include cron daemon |
+
+### Dockerfile_static / Dockerfile_bun
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `UBUNTU_IMAGE` | `ghcr.io/smol-kitten/ubuntu-base:24.04` | Ubuntu base image from GHCR mirror |
 
 ## Example Build Commands
 
@@ -122,21 +155,25 @@ docker build -f Dockerfile_prep_base \
   -t prep_base:24.04 .
 
 # Stage 2: build nginx runtime with Redis and imagick
-docker build -f Dockerfile_specific \
+docker build -f Dockerfile_nginx \
   --build-arg BUILDER_IMAGE=prep_base:24.04 \
-  --build-arg UBUNTU_VERSION=24.04 \
-  --build-arg SERVER_TYPE=nginx \
+  --build-arg UBUNTU_IMAGE=ubuntu:24.04 \
   --build-arg INSTALL_IMAGICK=true \
   --build-arg INSTALL_REDIS=true \
   -t nginx:24.04-redis-imagick .
 
-# Stage 2: build Apache runtime (no optional extensions)
-docker build -f Dockerfile_specific \
-  --build-arg BUILDER_IMAGE=prep_base:24.04 \
-  --build-arg UBUNTU_VERSION=24.04 \
-  --build-arg SERVER_TYPE=apache2 \
-  -t apache2:24.04 .
+# Build static/SPA image
+docker build -f Dockerfile_static \
+  --build-arg UBUNTU_IMAGE=ubuntu:24.04 \
+  -t static:24.04 .
+
+# Build Bun runtime image
+docker build -f Dockerfile_bun \
+  --build-arg UBUNTU_IMAGE=ubuntu:24.04 \
+  -t bun:latest .
 ```
+
+> **Local builds**: use `ubuntu:24.04` directly as `UBUNTU_IMAGE` / `BASE_IMAGE` when building locally. The GHCR mirror is only needed in CI to avoid Docker Hub rate limits.
 
 ## Usage
 
@@ -158,7 +195,56 @@ docker run -p 8080:80 \
   -e OTEL_ENABLED=true \
   -e OTEL_ENDPOINT=https://otlp.example.com/v1/metrics \
   ghcr.io/smol-kitten/nginx:24.04
+
+# Static / SPA site
+docker run -p 8080:80 -v ./dist:/var/www/html:ro ghcr.io/smol-kitten/static:24.04
+
+# Bun edge runtime
+docker run -p 3000:3000 -v ./app:/app ghcr.io/smol-kitten/bun:latest
 ```
+
+## Security
+
+### Built-in protections
+
+- **HEALTHCHECK** — all images have a Docker `HEALTHCHECK` configured; orchestrators (Docker Compose, Kubernetes, ECS) can detect and restart unhealthy containers automatically.
+- **Security headers** — enabled by default: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`.
+- **PHP hardening** — `PHP_EXPOSE=Off` hides the PHP version from response headers. Set `PHP_DISABLE_DANGEROUS_FUNCTIONS=true` to block `exec`, `shell_exec`, `system`, `proc_open`, `popen`, `passthru`, `show_source`, `phpinfo`.
+- **Session security** — `SESSION_COOKIE_HTTPONLY=On` by default; enable `SESSION_COOKIE_SECURE=On` when running behind HTTPS.
+- **Trivy scanning** — automated daily vulnerability scans (CRITICAL/HIGH severity, unfixed CVEs ignored).
+
+### Production recommendations
+
+```yaml
+# docker-compose.yml — hardened production example
+services:
+  web:
+    image: ghcr.io/smol-kitten/nginx:24.04-imagick@sha256:<digest>
+    read_only: true
+    tmpfs:
+      - /var/run
+      - /tmp
+      - /run/nginx
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      FORCE_HTTPS: "true"          # Set Strict-Transport-Security (deploy behind TLS terminator)
+      PHP_DISABLE_DANGEROUS_FUNCTIONS: "true"
+      SESSION_COOKIE_SECURE: "On"
+      SECURITY_HEADERS: "true"
+```
+
+Key recommendations:
+
+- **Run behind a TLS terminator** (nginx, Traefik, Caddy) and set `FORCE_HTTPS=true` for HSTS.
+- **Pin image to digest** in production (`image: ...:24.04@sha256:...`) to prevent unexpected updates.
+- **Drop capabilities** with `cap_drop: [ALL]` and add back only `NET_BIND_SERVICE` if binding to port 80.
+- **Read-only filesystem** with `read_only: true`; mount tmpfs for `/var/run`, `/tmp`, and `/run/nginx` (log dirs still need write access — mount a volume for `/var/log` if needed).
+- **no-new-privileges** with `security_opt: [no-new-privileges:true]` prevents privilege escalation.
 
 ## Environment Variables
 
@@ -264,15 +350,6 @@ The calculator outputs a report to the container log at startup, e.g.:
 | `NGINX_WORKER_CONNECTIONS` | `1024` | Max connections per worker |
 | `NGINX_KEEPALIVE_TIMEOUT` | `65` | Keep-alive timeout (s) |
 | `NGINX_CLIENT_MAX_BODY_SIZE` | (upload size) | Max request body size |
-
-### Apache-Specific Settings
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `APACHE_MAX_REQUEST_WORKERS` | `150` | Max concurrent connections |
-| `APACHE_KEEPALIVE` | `On` | Enable HTTP keep-alive |
-| `APACHE_KEEPALIVE_TIMEOUT` | `5` | Keep-alive timeout (s) |
-| `APACHE_MAX_KEEPALIVE_REQUESTS` | `100` | Max requests per keep-alive connection |
 
 ### Health Worker
 
@@ -425,7 +502,7 @@ RUN chmod +x /docker-entrypoint-custom.sh
 
 ### Custom Entrypoint Hook
 
-Both images execute `/docker-entrypoint-custom.sh` (if it exists) after env var configuration but before PHP-FPM and the web server start. Use it to install packages, write config files, or set up anything your application needs.
+The nginx image executes `/docker-entrypoint-custom.sh` (if it exists) after env var configuration but before PHP-FPM and the web server start. Use it to install packages, write config files, or set up anything your application needs.
 
 ```bash
 #!/bin/bash
@@ -463,11 +540,11 @@ docker run -v ./my-crontab:/etc/cron.d/app:ro ghcr.io/smol-kitten/nginx:24.04-cr
 
 ## Internal Monitoring Endpoints
 
-Both images expose internal status pages accessible only from loopback (`127.0.0.1`). Use these from the health worker, telemetry exporter, or your own scripts inside the container.
+These endpoints are accessible only from loopback (`127.0.0.1`) inside the container.
 
 | Endpoint | Description |
 |----------|-------------|
-| `/nginx-status` | nginx `stub_status` (nginx image only) |
+| `/nginx-status` | nginx `stub_status` |
 | `/php-fpm-status` | PHP-FPM status page (JSON: `?json`) |
 
 ## Key File Locations
@@ -483,57 +560,67 @@ Both images expose internal status pages accessible only from loopback (`127.0.0
 | `/var/run/php/php8.4-fpm.sock` | PHP-FPM Unix socket |
 | `/etc/nginx/nginx.conf` | Main nginx config |
 | `/etc/nginx/sites-enabled/nginx.conf` | nginx site config |
-| `/etc/apache2/sites-enabled/000-default.conf` | Apache site config |
 | `/docker-entrypoint-custom.sh` | Custom init hook (optional) |
 
 ## GitHub Actions Workflows
 
+### `monthly-base.yml` — Ubuntu Base Mirror
+
+Triggers: 1st of each month 03:00 UTC, manual dispatch.
+
+Mirrors `ubuntu:24.04`, `25.04`, `25.10` from Docker Hub to `ghcr.io/smol-kitten/ubuntu-base`. This is the only workflow that ever contacts Docker Hub — all other builds use the GHCR mirror.
+
 ### `build.yml` — Full Build Pipeline
 
-Triggers: push to `main`, weekly Sunday 03:00 UTC, manual dispatch.
+Triggers: push to `main`, weekly Sunday 04:00 UTC, manual dispatch.
 
 1. **resolve-php-version** — fetches latest PHP 8.4.x from php.net API (override via `php_version_override` input)
 2. **build-builder** — builds `prep_base` images (3 Ubuntu versions, `max-parallel: 3`)
-3. **build-variants** — builds all 192 runtime variants (`max-parallel: 20`)
-4. **scan** — runs Trivy vulnerability scan on a sample image
-5. **cleanup** — removes untagged/SHA-only images from the registry
+3. **build-nginx** — builds all 96 nginx runtime variants (`max-parallel: 20`)
+4. **build-static** — builds static/SPA images (3 Ubuntu versions)
+5. **build-bun** — builds the Bun edge runtime image
+6. **scan-images** — runs Trivy vulnerability scan on sample images
+7. **cleanup-untagged** — removes untagged/SHA-only images from the registry
 
 ### `security-update.yml` — Daily OS Patch
 
-Triggers: daily 02:00 UTC (skips Sunday, handled by full build), manual dispatch.
+Triggers: daily 02:00 UTC, manual dispatch.
 
-Rebuilds runtime images with `--pull` so the latest Ubuntu base is pulled. Runs Trivy scan after. This ensures OS-level CVEs are patched within 24 hours without recompiling PHP.
+Rebuilds runtime images using the ubuntu-base GHCR mirror so OS-level security patches are applied within 24 hours without recompiling PHP. Runs Trivy scan after.
 
 ### `pr-test.yml` — Pull Request CI
 
 Triggers: pull requests to `main`, manual dispatch.
 
 Jobs:
-- **lint** — Dockerfile linting with hadolint (uses `.hadolint.yaml`)
+- **lint** — Dockerfile linting with hadolint on all 4 Dockerfiles (uses `.hadolint.yaml`)
 - **check-prep-base** — probes registry to see if a builder image exists
 - **test-build-nginx** — test-builds the nginx image (skipped if builder not available)
-- **test-build-apache** — test-builds the apache image (skipped if builder not available)
 - **smoke-test** — starts a container, verifies HTTP 200 from nginx
 
 ### Dependabot
 
-`.github/dependabot.yml` auto-updates GitHub Actions versions weekly (Mondays). Action versions used: `docker/build-push-action@v7`, `docker/login-action@v4`, `docker/setup-buildx-action@v4`, `aquasecurity/trivy-action@v0.36.0`, `hadolint/hadolint-action@v3.3.0`.
+`.github/dependabot.yml` auto-updates GitHub Actions versions weekly (Mondays).
 
 ## Source Files
 
 | File | Description |
 |------|-------------|
 | `Dockerfile_prep_base` | Builds PHP from source; output is the builder image |
-| `Dockerfile_specific` | Assembles runtime image from builder |
-| `src/entrypoint-common.sh` | Shared functions sourced by both entrypoints |
+| `Dockerfile_nginx` | Assembles nginx runtime image from builder |
+| `Dockerfile_static` | Lightweight nginx image for SPA/static sites (no PHP) |
+| `Dockerfile_bun` | Bun.js edge runtime image |
+| `src/entrypoint-common.sh` | Shared functions sourced by entrypoints |
 | `src/docker-entrypoint-nginx.sh` | nginx entrypoint |
-| `src/docker-entrypoint-apache.sh` | Apache entrypoint |
+| `src/docker-entrypoint-static.sh` | Static server entrypoint |
+| `src/docker-entrypoint-bun.sh` | Bun entrypoint |
 | `src/auto-tune.sh` | AUTO resource calculator |
 | `src/health-worker.sh` | Background health monitoring daemon |
 | `src/telemetry.sh` | OpenTelemetry metrics exporter |
 | `src/nginx/nginx.conf` | nginx main config template |
-| `src/nginx/site.conf` | nginx site config template |
-| `src/apache/000-default.conf` | Apache virtual host template |
+| `src/nginx/site.conf` | nginx site config template (PHP) |
+| `src/nginx/nginx-static.conf` | nginx main config for static images |
+| `src/nginx/site-static.conf` | nginx site config for static images |
 | `.hadolint.yaml` | Dockerfile linting config |
 | `.github/dependabot.yml` | Dependabot auto-update config |
 

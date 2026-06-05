@@ -1,13 +1,19 @@
 # Full build pipeline:
 # 1. Resolve the latest PHP 8.4.x release from php.net
 # 2. Build and push builder images (prep_base) with compiled PHP + all extensions
-# 3. Build and push all runtime variants
-# 4. Scan a sample image with Trivy
-# 5. Clean up untagged container versions
+# 3. Build and push all nginx runtime variants
+# 4. Build and push static/SPA and Bun images
+# 5. Scan a sample image with Trivy
+# 6. Clean up untagged container versions
 #
 # Triggers:
 #   push to main  — always run full build
-#   weekly Sunday — always run full build (new PHP releases, new base image layers)
+#   weekly Sunday — always run full build (new PHP releases, fresh base layers)
+#
+# Base image hierarchy:
+#   monthly-base.yml → ubuntu-base (GHCR mirror of Docker Hub ubuntu)
+#   build.yml weekly → prep_base  (PHP compiled from source, built on ubuntu-base)
+#   security-update.yml daily → runtime images (apt security patches, built on ubuntu-base)
 
 name: Build Docker Images
 
@@ -15,7 +21,7 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 3 * * 0'  # Weekly Sunday 03:00 UTC – full rebuild
+    - cron: '0 4 * * 0'  # Weekly Sunday 04:00 UTC – full rebuild
   workflow_dispatch:
     inputs:
       php_version_override:
@@ -48,6 +54,7 @@ jobs:
 
   # ------------------------------------------------------------------
   # Build and push prep_base (PHP compiled from source + all PECL exts)
+  # Uses ubuntu-base from GHCR — never pulls from Docker Hub.
   # ------------------------------------------------------------------
   build-builder:
     needs: resolve-php-version
@@ -84,33 +91,28 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
           build-args: |
-            BASE_IMAGE=ubuntu:${{ matrix.version }}
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
             PHP_VERSION=${{ needs.resolve-php-version.outputs.php_version }}
           cache-from: type=local,src=/home/runner/.cache/buildx/prep-base
           cache-to:   type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
   # ------------------------------------------------------------------
-  # Build and push all runtime variants
+  # Build and push all nginx runtime variants (96 configs)
+  # 1 server × 3 Ubuntu versions × 2^5 extension combos = 96
   # ------------------------------------------------------------------
-  build-variants:
+  build-nginx:
     needs: [ resolve-php-version, build-builder ]
     runs-on: self-hosted
     strategy:
       fail-fast: false
       max-parallel: 20
       matrix:
-        server:    [ nginx, apache2, caddy ]
         version:   [ "24.04", "25.04", "25.10" ]
         imagick:   [ "true", "false" ]
         redis:     [ "true", "false" ]
         memcached: [ "true", "false" ]
         ssh2:      [ "true", "false" ]
         cron:      [ "true", "false" ]
-        exclude:
-          # caddy on 25.10 is experimental-on-experimental; excluding it keeps
-          # the matrix at exactly 256 configs (GitHub's hard limit).
-          - server: caddy
-            version: "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v6
@@ -134,9 +136,9 @@ jobs:
           [ "${{ matrix.memcached }}" = "true" ] && TAG="${TAG}-memcached"
           [ "${{ matrix.ssh2 }}"      = "true" ] && TAG="${TAG}-ssh2"
           [ "${{ matrix.cron }}"      = "true" ] && TAG="${TAG}-cron"
-          echo "image_tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${TAG}" \
+          echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}" \
             >> "$GITHUB_OUTPUT"
-          echo "cache_key=${{ matrix.server }}-${{ matrix.version }}" >> "$GITHUB_OUTPUT"
+          echo "cache_key=nginx-${{ matrix.version }}" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Ensure buildx cache directory
@@ -144,17 +146,16 @@ jobs:
           sudo mkdir -p "/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }}"
           sudo chmod -R 0777 /home/runner/.cache/buildx || true
 
-      - name: Build and push variant image
+      - name: Build and push nginx variant image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile_specific
+          file: ./Dockerfile_nginx
           push: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
-            UBUNTU_VERSION=${{ matrix.version }}
-            SERVER_TYPE=${{ matrix.server }}
+            UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
             INSTALL_REDIS=${{ matrix.redis }}
             INSTALL_MEMCACHED=${{ matrix.memcached }}
@@ -162,27 +163,6 @@ jobs:
             INSTALL_CRON=${{ matrix.cron }}
           cache-from: type=local,src=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }}
           cache-to:   type=local,dest=/home/runner/.cache/buildx/variants-${{ steps.meta.outputs.cache_key }},mode=max
-
-  # ------------------------------------------------------------------
-  # Trivy vulnerability scan on a representative image
-  # ------------------------------------------------------------------
-  scan-images:
-    needs: build-variants
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        server:  [ nginx, apache2, caddy ]
-        version: [ "24.04", "25.04" ]
-    steps:
-      - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}-imagick
-          format: table
-          exit-code: '0'
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
 
   # ------------------------------------------------------------------
   # Build static / SPA images (no PHP, all ubuntu versions)
@@ -212,9 +192,8 @@ jobs:
           context: .
           file: ./Dockerfile_static
           push: true
-          pull: false
           tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
-          build-args: UBUNTU_VERSION=${{ matrix.version }}
+          build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
           cache-from: type=local,src=/home/runner/.cache/buildx/static-${{ matrix.version }}
           cache-to:   type=local,dest=/home/runner/.cache/buildx/static-${{ matrix.version }},mode=max
 
@@ -241,16 +220,36 @@ jobs:
           context: .
           file: ./Dockerfile_bun
           push: true
-          pull: false
           tags: ghcr.io/${{ github.repository_owner }}/bun:latest
+          build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:24.04
           cache-from: type=local,src=/home/runner/.cache/buildx/bun
           cache-to:   type=local,dest=/home/runner/.cache/buildx/bun,mode=max
+
+  # ------------------------------------------------------------------
+  # Trivy vulnerability scan on a representative image
+  # ------------------------------------------------------------------
+  scan-images:
+    needs: build-nginx
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [ "24.04", "25.04" ]
+    steps:
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}-imagick
+          format: table
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
 
   # ------------------------------------------------------------------
   # Remove untagged container versions from the registry
   # ------------------------------------------------------------------
   cleanup-untagged:
-    needs: [ build-variants, build-static, build-bun ]
+    needs: [ build-nginx, build-static, build-bun ]
     runs-on: self-hosted
     if: always()
     steps:
@@ -259,11 +258,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const packages = ['nginx', 'apache2', 'caddy', 'static', 'bun', 'prep_base'];
+            const packages = ['nginx', 'static', 'bun', 'prep_base', 'ubuntu-base'];
             const owner = context.repo.owner;
 
             async function getVersions(packageName) {
-              // Try org endpoint first, fall back to user endpoint
               try {
                 const res = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
                   package_type: 'container', package_name: packageName, org: owner

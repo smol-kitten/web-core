@@ -1,12 +1,12 @@
 # PHP Builder Image
 # Compiles PHP from source with all extensions pre-built.
-# Pushed to the registry and used as the builder stage in Dockerfile_specific.
+# Pushed to the registry and used as the builder stage in Dockerfile_nginx.
 #
 # Build args:
-#   BASE_IMAGE   - Ubuntu base image (default ubuntu:24.04)
+#   BASE_IMAGE   - Ubuntu base image from GHCR mirror (default ghcr.io/smol-kitten/ubuntu-base:24.04)
 #   PHP_VERSION  - Full PHP version string e.g. 8.4.6
 
-ARG BASE_IMAGE=ubuntu:24.04
+ARG BASE_IMAGE=ghcr.io/smol-kitten/ubuntu-base:24.04
 FROM ${BASE_IMAGE}
 
 # Use bash with pipefail for safer RUN commands

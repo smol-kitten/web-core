@@ -2,33 +2,30 @@
 # Rebuilds only the runtime images (no PHP source compilation) so that
 # OS-level security patches from apt are applied every day without the
 # expensive prep_base rebuild.  prep_base is rebuilt weekly by build.yml.
+#
+# Uses ubuntu-base from GHCR (mirrored monthly by monthly-base.yml) so
+# the runtime base layer is always from our own registry, never Docker Hub.
 
 name: Daily Security Update
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Daily 02:00 UTC (skips Sunday – build.yml runs at 03:00)
+    - cron: '0 2 * * *'  # Daily 02:00 UTC
   workflow_dispatch:
 
 jobs:
-  rebuild-runtimes:
+  rebuild-nginx:
     runs-on: self-hosted
     strategy:
       fail-fast: false
       max-parallel: 20
       matrix:
-        server:    [ nginx, apache2, caddy ]
         version:   [ "24.04", "25.04", "25.10" ]
         imagick:   [ "true", "false" ]
         redis:     [ "true", "false" ]
         memcached: [ "true", "false" ]
         ssh2:      [ "true", "false" ]
         cron:      [ "true", "false" ]
-        exclude:
-          # caddy on 25.10 is experimental-on-experimental; excluding it keeps
-          # the matrix at exactly 256 configs (GitHub's hard limit).
-          - server: caddy
-            version: "25.10"
     continue-on-error: ${{ matrix.version == '25.10' }}
     steps:
       - uses: actions/checkout@v6
@@ -52,24 +49,21 @@ jobs:
           [ "${{ matrix.memcached }}" = "true" ] && TAG="${TAG}-memcached"
           [ "${{ matrix.ssh2 }}"      = "true" ] && TAG="${TAG}-ssh2"
           [ "${{ matrix.cron }}"      = "true" ] && TAG="${TAG}-cron"
-          echo "image_tag=ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}${TAG}" \
+          echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}" \
             >> "$GITHUB_OUTPUT"
-          echo "cache_key=${{ matrix.server }}-${{ matrix.version }}" >> "$GITHUB_OUTPUT"
+          echo "cache_key=nginx-${{ matrix.version }}" >> "$GITHUB_OUTPUT"
         shell: bash
 
-      - name: Rebuild runtime image with latest OS patches
+      - name: Rebuild nginx image with latest OS patches
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile_specific
+          file: ./Dockerfile_nginx
           push: true
-          # Pull fresh base image to pick up the latest apt security updates
-          pull: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
-            UBUNTU_VERSION=${{ matrix.version }}
-            SERVER_TYPE=${{ matrix.server }}
+            UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
             INSTALL_IMAGICK=${{ matrix.imagick }}
             INSTALL_REDIS=${{ matrix.redis }}
             INSTALL_MEMCACHED=${{ matrix.memcached }}
@@ -100,9 +94,10 @@ jobs:
           context: .
           file: ./Dockerfile_static
           push: true
-          pull: true
           tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
-          build-args: UBUNTU_VERSION=${{ matrix.version }}
+          build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
+          cache-from: type=local,src=/home/runner/.cache/buildx/static-${{ matrix.version }}
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/static-${{ matrix.version }},mode=max
 
   # Daily rebuild of Bun image (OS security patches)
   rebuild-bun:
@@ -121,23 +116,24 @@ jobs:
           context: .
           file: ./Dockerfile_bun
           push: true
-          pull: true
           tags: ghcr.io/${{ github.repository_owner }}/bun:latest
+          build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:24.04
+          cache-from: type=local,src=/home/runner/.cache/buildx/bun
+          cache-to:   type=local,dest=/home/runner/.cache/buildx/bun,mode=max
 
   # Scan after rebuild
   scan-images:
-    needs: [ rebuild-runtimes, rebuild-static, rebuild-bun ]
+    needs: [ rebuild-nginx, rebuild-static, rebuild-bun ]
     runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
-        server:  [ nginx, apache2, caddy ]
         version: [ "24.04", "25.04" ]
     steps:
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}:${{ matrix.version }}-imagick
+          image-ref: ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}-imagick
           format: table
           exit-code: '0'
           severity: CRITICAL,HIGH

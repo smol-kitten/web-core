@@ -22,13 +22,21 @@ jobs:
         uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: Dockerfile_prep_base
-          # Rule overrides are in .hadolint.yaml at the repo root
 
-      - name: Lint Dockerfile_specific
+      - name: Lint Dockerfile_nginx
         uses: hadolint/hadolint-action@v3.3.0
         with:
-          dockerfile: Dockerfile_specific
-          # Rule overrides are in .hadolint.yaml at the repo root
+          dockerfile: Dockerfile_nginx
+
+      - name: Lint Dockerfile_static
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile_static
+
+      - name: Lint Dockerfile_bun
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile_bun
 
   # ------------------------------------------------------------------
   # Check whether the cached prep_base image exists in the registry.
@@ -85,45 +93,11 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile_specific
+          file: ./Dockerfile_nginx
           push: false
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:24.04
-            UBUNTU_VERSION=24.04
-            SERVER_TYPE=nginx
-            INSTALL_IMAGICK=true
-            INSTALL_REDIS=false
-            INSTALL_MEMCACHED=false
-            INSTALL_SSH2=false
-            INSTALL_CRON=false
-
-  test-build-apache:
-    runs-on: self-hosted
-    needs: check-prep-base
-    if: needs.check-prep-base.outputs.available == 'true'
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build apache runtime image (no push)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile_specific
-          push: false
-          build-args: |
-            BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:24.04
-            UBUNTU_VERSION=24.04
-            SERVER_TYPE=apache2
+            UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:24.04
             INSTALL_IMAGICK=true
             INSTALL_REDIS=false
             INSTALL_MEMCACHED=false
@@ -154,14 +128,13 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile_specific
+          file: ./Dockerfile_nginx
           push: false
           load: true
           tags: pr-smoke-test:latest
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:24.04
-            UBUNTU_VERSION=24.04
-            SERVER_TYPE=nginx
+            UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:24.04
             INSTALL_IMAGICK=true
 
       - name: Run smoke test
@@ -173,7 +146,11 @@ jobs:
             pr-smoke-test:latest
 
           echo "Waiting for services to start..."
-          sleep 10
+          for i in $(seq 1 30); do
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:18080/ 2>/dev/null || echo 000)
+            [ "$HTTP_CODE" = "200" ] && break
+            sleep 1
+          done
 
           HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:18080/ || echo 000)
           echo "HTTP response: $HTTP_CODE"

@@ -1,0 +1,38 @@
+# Monthly Ubuntu base mirror
+# Pulls Ubuntu from Docker Hub once per month and re-tags it to GHCR.
+# All other workflows use the GHCR mirror so they never hit Docker Hub.
+#
+# Tier 1 (this workflow): monthly → ubuntu-base images in GHCR
+# Tier 2 (build.yml weekly): ubuntu-base → prep_base (PHP compiled from source)
+# Tier 3 (security-update.yml daily): prep_base → runtime images (apt security patches)
+
+name: Monthly Ubuntu Base Mirror
+
+on:
+  schedule:
+    - cron: '0 3 1 * *'  # 1st of each month, 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  mirror-ubuntu-base:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [ "24.04", "25.04", "25.10" ]
+    continue-on-error: ${{ matrix.version == '25.10' }}
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror ubuntu:${{ matrix.version }} to GHCR
+        run: |
+          docker pull ubuntu:${{ matrix.version }}
+          docker tag ubuntu:${{ matrix.version }} \
+            ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
+          docker push ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
+          docker rmi ubuntu:${{ matrix.version }} || true
