@@ -151,6 +151,9 @@ jobs:
           context: .
           file: ./Dockerfile_nginx
           push: true
+          # pull: true ensures buildx fetches the fresh prep_base manifest from GHCR
+          # (just rebuilt by build-builder) rather than using a stale cached SHA.
+          pull: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
