@@ -151,6 +151,7 @@ jobs:
           context: .
           file: ./Dockerfile_nginx
           push: true
+          pull: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
@@ -191,6 +192,7 @@ jobs:
           context: .
           file: ./Dockerfile_static
           push: true
+          pull: true
           tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
           build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
           cache-from: type=local,src=/home/runner/.cache/buildx/static-${{ matrix.version }}

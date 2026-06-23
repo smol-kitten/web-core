@@ -53,12 +53,31 @@ jobs:
             >> "$GITHUB_OUTPUT"
         shell: bash
 
+      # Skip versions whose prep_base builder has not been published to GHCR
+      # yet (e.g. a newly-added Ubuntu release). Without this guard buildx
+      # fails the daily run with "manifest unknown" when FROM prep_base:<ver>
+      # cannot be resolved.
+      - name: Check prep_base availability
+        id: prep
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}"
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "available=true"  >> "$GITHUB_OUTPUT"
+            echo "$IMAGE found — rebuilding"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE not in registry (run build.yml first) — skipping ${{ matrix.version }}"
+          fi
+        shell: bash
+
       - name: Rebuild nginx image with latest OS patches
+        if: steps.prep.outputs.available == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile_nginx
           push: true
+          pull: true
           tags: ${{ steps.meta.outputs.image_tag }}
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
@@ -93,6 +112,7 @@ jobs:
           context: .
           file: ./Dockerfile_static
           push: true
+          pull: true
           tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
           build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
           cache-from: type=local,src=/home/runner/.cache/buildx/static-${{ matrix.version }}
@@ -115,6 +135,7 @@ jobs:
           context: .
           file: ./Dockerfile_bun
           push: true
+          pull: true
           tags: ghcr.io/${{ github.repository_owner }}/bun:latest
           build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:24.04
           cache-from: type=local,src=/home/runner/.cache/buildx/bun
