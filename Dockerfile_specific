@@ -33,6 +33,7 @@ ARG INSTALL_CRON=false
 
 # Security: upgrade pre-installed packages, then add only runtime deps (no build tools)
 RUN apt-get update && \
+    apt-get -y dist-upgrade && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
