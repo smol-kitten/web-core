@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Lint Dockerfile_prep_base
         uses: hadolint/hadolint-action@v3.3.0
@@ -77,7 +77,7 @@ jobs:
     needs: check-prep-base
     if: needs.check-prep-base.outputs.available == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -112,7 +112,7 @@ jobs:
     needs: test-build-nginx
     if: needs.test-build-nginx.result == 'success'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
