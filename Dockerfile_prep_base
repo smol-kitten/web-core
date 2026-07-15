@@ -150,7 +150,7 @@ RUN pecl install redis && \
 RUN pecl install memcached && \
     echo "extension=memcached.so" > /usr/local/php8.4/etc/conf.d/20-memcached.ini
 
-# Strip binaries, remove static libs, test/doc dirs, and build artefacts
+# Strip binaries, remove static libs, dev headers (include/, php/build/), test/doc dirs, and build artefacts
 RUN strip --strip-all /usr/local/php8.4/bin/* /usr/local/php8.4/sbin/* 2>/dev/null || true && \
     find /usr/local/php8.4/lib/php/extensions/ -name '*.so' \
         -exec strip --strip-all {} \; 2>/dev/null || true && \
@@ -158,6 +158,8 @@ RUN strip --strip-all /usr/local/php8.4/bin/* /usr/local/php8.4/sbin/* 2>/dev/nu
     rm -rf /usr/src/php-${PHP_VERSION} && \
     rm -rf /usr/local/php8.4/lib/php/test && \
     rm -rf /usr/local/php8.4/lib/php/doc && \
+    rm -rf /usr/local/php8.4/include && \
+    rm -rf /usr/local/php8.4/lib/php/build && \
     rm -rf /var/cache/pear /tmp/pear /tmp/pear_* && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
