@@ -21,13 +21,17 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 4 * * 0'  # Weekly Sunday 04:00 UTC – full rebuild
+    - cron: '36 4 * * 0'  # Weekly Sunday 04:00 UTC – full rebuild
   workflow_dispatch:
     inputs:
       php_version_override:
         description: 'Override PHP version (leave blank to auto-resolve latest 8.4.x)'
         required: false
         default: ''
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}'
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ------------------------------------------------------------------
