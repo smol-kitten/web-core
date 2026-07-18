@@ -10,8 +10,12 @@ name: Daily Security Update
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Daily 02:00 UTC
+    - cron: '49 2 * * *'  # Daily 02:00 UTC
   workflow_dispatch:
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}'
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rebuild-nginx:
