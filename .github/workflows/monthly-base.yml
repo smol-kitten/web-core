@@ -10,8 +10,12 @@ name: Monthly Ubuntu Base Mirror
 
 on:
   schedule:
-    - cron: '0 3 1 * *'  # 1st of each month, 03:00 UTC
+    - cron: '16 3 1 * *'  # 1st of each month, 03:00 UTC
   workflow_dispatch:
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}'
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   mirror-ubuntu-base:
