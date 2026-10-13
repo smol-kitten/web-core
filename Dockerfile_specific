@@ -39,11 +39,11 @@ RUN apt-get update && \
         ca-certificates \
         curl \
         iproute2 \
-        libxml2 \
         libsqlite3-0 \
         libbz2-1.0 \
         zlib1g && \
     apt-get install -y --no-install-recommends \
+        $(apt-cache search --names-only '^libxml2(-[0-9]+)?$'   | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libssl3(t64)?$'       | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libcurl4(t64)?$'      | awk '{print $1}' | head -1) \
         $(apt-cache search --names-only '^libreadline8(t64)?$'  | awk '{print $1}' | head -1) \
