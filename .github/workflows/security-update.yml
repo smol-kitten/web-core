@@ -17,6 +17,11 @@ concurrency:
   group: '${{ github.workflow }}-${{ github.ref }}'
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# docker/build-push-action uploads a *.dockerbuild record artifact per build; keep it to the
+# fleet artifact classes (tag 30 d, PR 3 d, other refs 7 d) instead of the org default.
+env:
+  DOCKER_BUILD_RECORD_RETENTION_DAYS: ${{ startsWith(github.ref, 'refs/tags/') && 30 || (github.event_name == 'pull_request' && 3 || 7) }}
+
 jobs:
   rebuild-nginx:
     runs-on: self-hosted
