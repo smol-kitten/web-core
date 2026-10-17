@@ -79,6 +79,7 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        id: buildx
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -95,6 +96,7 @@ jobs:
       - name: Build and push builder image
         uses: docker/build-push-action@v7
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           file: ./Dockerfile_prep_base
           push: true
@@ -128,6 +130,7 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        id: buildx
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -157,6 +160,7 @@ jobs:
       - name: Build and push nginx variant image
         uses: docker/build-push-action@v7
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           file: ./Dockerfile_nginx
           push: true
@@ -186,6 +190,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+        id: buildx
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -198,6 +203,7 @@ jobs:
       - name: Build and push static image
         uses: docker/build-push-action@v7
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           file: ./Dockerfile_static
           push: true
@@ -215,6 +221,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+        id: buildx
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -227,6 +234,7 @@ jobs:
       - name: Build and push Bun image
         uses: docker/build-push-action@v7
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: .
           file: ./Dockerfile_bun
           push: true
