@@ -114,7 +114,9 @@ jobs:
     runs-on: self-hosted
     strategy:
       fail-fast: false
-      max-parallel: 20
+      # n4 has 6 runners shared with the whole fleet; 20 filled all of them with image builds and
+      # tripped the mari-gate EMERGENCY valve (2026-10-18 09:10-09:36Z, load1 up to 41).
+      max-parallel: 2
       matrix:
         version:   [ "24.04", "25.04", "25.10" ]
         imagick:   [ "true", "false" ]
@@ -258,10 +260,17 @@ jobs:
   # ------------------------------------------------------------------
   # Remove untagged container versions from the registry
   # ------------------------------------------------------------------
+  # DISABLED 2026-10-18: this deleted the platform manifests of tagged multi-arch images. Buildx pushes an
+  # OCI index whose per-platform and attestation manifests are UNTAGGED package versions in GHCR, so
+  # "delete every untagged version" removed the image content under live tags: after the 09:59Z run,
+  # prep_base:24.04/25.04, static:24.04 and bun:latest had 2 of 2 child manifests missing (unpullable;
+  # web-core #47 smoke-test: "failed to resolve source metadata for ghcr.io/smol-kitten/prep_base:24.04").
+  # It also reads only the first page of versions. Re-enable only with a cleanup that keeps every
+  # manifest referenced by a tagged index (e.g. dataaxiom/ghcr-cleanup-action, which handles multi-arch).
   cleanup-untagged:
     needs: [ build-nginx, build-static, build-bun ]
     runs-on: self-hosted
-    if: always()
+    if: false
     steps:
       - name: Delete untagged image versions
         uses: actions/github-script@v9

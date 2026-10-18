@@ -27,7 +27,9 @@ jobs:
     runs-on: self-hosted
     strategy:
       fail-fast: false
-      max-parallel: 20
+      # n4 has 6 runners shared with the whole fleet; 20 filled all of them with image builds and
+      # tripped the mari-gate EMERGENCY valve (2026-10-18 09:10-09:36Z, load1 up to 41).
+      max-parallel: 2
       matrix:
         version:   [ "24.04", "25.04", "25.10" ]
         imagick:   [ "true", "false" ]
