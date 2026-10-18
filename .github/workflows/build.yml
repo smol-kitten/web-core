@@ -254,6 +254,34 @@ jobs:
           cache-to:   type=local,dest=/home/runner/.cache/buildx/bun,mode=max
 
   # ------------------------------------------------------------------
+  # Matrix report: continue-on-error hides failing legs (every 25.10 leg failed from January to
+  # 2026-10-18 and nobody noticed, so 8 prod sites ran 9-month-old images). This job lists every
+  # failed build leg in the step summary and FAILS when there is one, so the run turns red.
+  # ------------------------------------------------------------------
+  matrix-report:
+    needs: [ build-nginx, build-static, build-bun ]
+    if: ${{ !cancelled() }}
+    runs-on: self-hosted
+    permissions:
+      actions: read
+    steps:
+      - name: Fail loudly on any failed build leg
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: context.runId, attempt_number: Number(process.env.GITHUB_RUN_ATTEMPT || 1), per_page: 100 });
+            const legs = jobs.filter(j => /^build-(nginx|static|bun|builder)\b/.test(j.name));
+            const failed = legs.filter(j => j.conclusion === 'failure');
+            const skipped = legs.filter(j => j.conclusion === 'skipped').length;
+            await core.summary
+              .addHeading(`Build legs: ${legs.length - failed.length - skipped} ok, ${failed.length} FAILED, ${skipped} skipped`, 3)
+              .addList(failed.map(j => `${j.name}: ${j.html_url}`))
+              .write();
+            if (failed.length) core.setFailed(`${failed.length} build leg(s) failed (continue-on-error hid them): ${failed.map(j => j.name).join('; ')}`);
+
+  # ------------------------------------------------------------------
   # Trivy vulnerability scan on a representative image
   # ------------------------------------------------------------------
   scan-images:

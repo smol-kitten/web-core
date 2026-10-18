@@ -34,7 +34,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
-        libxml2 \
+        $(apt-cache search --names-only '^libxml2(-16)?$' | awk '{print $1}' | sort | tail -1) \
         libsqlite3-0 \
         libbz2-1.0 \
         zlib1g && \
