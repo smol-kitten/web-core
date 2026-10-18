@@ -28,6 +28,15 @@ on:
         description: 'Override PHP version (leave blank to auto-resolve latest 8.4.x)'
         required: false
         default: ''
+      nginx_only:
+        description: 'Rebuild only the nginx images (skip builder, static, bun); the published prep_base is used'
+        type: boolean
+        required: false
+        default: false
+      nginx_versions:
+        description: 'JSON list of Ubuntu versions for the nginx matrix, e.g. ["24.04"] (blank = all)'
+        required: false
+        default: ''
 
 concurrency:
   group: '${{ github.workflow }}-${{ github.ref }}'
@@ -67,10 +76,13 @@ jobs:
   # ------------------------------------------------------------------
   build-builder:
     needs: resolve-php-version
+    if: ${{ !inputs.nginx_only }}
     runs-on: self-hosted
     strategy:
       fail-fast: false
-      max-parallel: 3
+      # 3 parallel prep_base builds alone tripped the mari-gate EMERGENCY valve on n4 (2026-10-18
+      # 10:16-10:28Z, 21 entries, load1 23.6); nginx at max-parallel 2 caused none.
+      max-parallel: 1
       matrix:
         version: [ "24.04", "25.04", "25.10" ]
     continue-on-error: ${{ matrix.version == '25.10' }}
@@ -111,6 +123,8 @@ jobs:
   # ------------------------------------------------------------------
   build-nginx:
     needs: [ resolve-php-version, build-builder ]
+    # build-builder is skipped on an nginx-only dispatch; then the published prep_base is used.
+    if: ${{ !cancelled() && needs.resolve-php-version.result == 'success' && (needs.build-builder.result == 'success' || needs.build-builder.result == 'skipped') }}
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -118,7 +132,7 @@ jobs:
       # tripped the mari-gate EMERGENCY valve (2026-10-18 09:10-09:36Z, load1 up to 41).
       max-parallel: 2
       matrix:
-        version:   [ "24.04", "25.04", "25.10" ]
+        version:   ${{ fromJSON(inputs.nginx_versions != '' && inputs.nginx_versions || '["24.04","25.04","25.10"]') }}
         imagick:   [ "true", "false" ]
         redis:     [ "true", "false" ]
         memcached: [ "true", "false" ]
@@ -179,6 +193,7 @@ jobs:
   # Build static / SPA images (no PHP, all ubuntu versions)
   # ------------------------------------------------------------------
   build-static:
+    if: ${{ !inputs.nginx_only }}
     runs-on: self-hosted
     strategy:
       fail-fast: false
@@ -213,6 +228,7 @@ jobs:
   # Build Bun edge runtime image
   # ------------------------------------------------------------------
   build-bun:
+    if: ${{ !inputs.nginx_only }}
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
