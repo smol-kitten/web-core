@@ -70,7 +70,9 @@ jobs:
     runs-on: self-hosted
     strategy:
       fail-fast: false
-      max-parallel: 3
+      # 3 parallel prep_base builds alone tripped the mari-gate EMERGENCY valve on n4 (2026-10-18
+      # 10:16-10:28Z, 21 entries, load1 23.6); nginx at max-parallel 2 caused none.
+      max-parallel: 1
       matrix:
         version: [ "24.04", "25.04", "25.10" ]
     continue-on-error: ${{ matrix.version == '25.10' }}
