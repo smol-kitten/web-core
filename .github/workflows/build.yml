@@ -198,7 +198,7 @@ jobs:
           cache-to:   type=local,dest=/home/runner/.cache/buildx/nginx-${{ matrix.version }},mode=max
 
       # Check the pushed tag itself: it must run the resolved PHP version and its nginx config must load.
-      - name: Verify pushed image (php -v, nginx -t)
+      - name: Verify pushed image (php -v, nginx -t, healthcheck tools)
         run: |
           IMAGE="${{ steps.meta.outputs.image_tag }}"
           WANT="${{ needs.resolve-php-version.outputs.php_version }}"
@@ -206,6 +206,8 @@ jobs:
           echo "$IMAGE: PHP $GOT (want $WANT)"
           [ "$GOT" = "$WANT" ] || { echo "::error::$IMAGE runs PHP $GOT, expected $WANT"; exit 1; }
           docker run --rm "$IMAGE" nginx -t
+          # Tools that app healthchecks call (ss / wget / pgrep; /etc/services for "ss ... :http").
+          docker run --rm "$IMAGE" sh -c 'for b in ss wget pgrep bash; do command -v $b >/dev/null || { echo "missing: $b"; exit 1; }; done; test -f /etc/services || { echo "missing: /etc/services"; exit 1; }'
 
   # ------------------------------------------------------------------
   # Build static / SPA images (no PHP, all ubuntu versions)

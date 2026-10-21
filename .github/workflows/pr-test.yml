@@ -190,7 +190,8 @@ jobs:
       # Consumer layout: the app brings its own nginx.conf (no "main" log format) and its own site on
       # another port, next to the image's default site. The 2026-10-20 image put a default site that
       # used "access_log ... main" there, so nginx refused to start in that layout (m-schneider.cc down,
-      # 2026-10-21). This starts nginx in that layout and checks both servers answer.
+      # 2026-10-21). This starts nginx in that layout and checks both servers answer, and runs the
+      # healthcheck commands fleet apps use (ss / wget / bash /dev/tcp / php / pgrep).
       - name: Consumer nginx layout test
         run: |
           docker rm -f consumer-test >/dev/null 2>&1 || true
@@ -212,6 +213,16 @@ jobs:
           done
           rc=0
           docker exec consumer-test nginx -t || rc=1
+          # The healthchecks fleet apps use (compose healthcheck.test); each must pass against :3000.
+          for hc in "ss --listening --tcp | grep -P 'LISTEN.+:3000'" \
+                    "ss --listening --tcp | grep -P 'LISTEN.+:http'" \
+                    "wget -q -O /dev/null http://127.0.0.1:3000/" \
+                    "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3000'" \
+                    "php -r 'exit(@fsockopen(\"127.0.0.1\",3000)?0:1);'" \
+                    "pgrep -f php-fpm"; do
+            if docker exec consumer-test sh -c "$hc" >/dev/null 2>&1; then echo "healthcheck ok:   $hc"
+            else echo "::error::healthcheck FAILED: $hc"; docker exec consumer-test sh -c "$hc" 2>&1 | tail -2; rc=1; fi
+          done
           docker exec consumer-test php -v | head -1
           echo "default site :80 -> HTTP $A, consumer site :3000 -> HTTP $B"
           [ "$A" = "200" ] && [ "$B" = "200" ] || rc=1
