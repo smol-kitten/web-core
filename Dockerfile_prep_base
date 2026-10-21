@@ -4,7 +4,8 @@
 #
 # Build args:
 #   BASE_IMAGE   - Ubuntu base image from GHCR mirror (default ghcr.io/smol-kitten/ubuntu-base:24.04)
-#   PHP_VERSION  - Full PHP version string e.g. 8.4.6
+#   PHP_VERSION  - Full PHP version string e.g. 8.4.27
+#   PHP_SHA256   - sha256 of php-${PHP_VERSION}.tar.gz from php.net (build fails on mismatch; empty = no check)
 
 ARG BASE_IMAGE=ghcr.io/smol-kitten/ubuntu-base:24.04
 FROM ${BASE_IMAGE}
@@ -12,7 +13,10 @@ FROM ${BASE_IMAGE}
 # Use bash with pipefail for safer RUN commands
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ARG PHP_VERSION=8.4.6
+ARG PHP_VERSION=8.4.27
+# sha256 of php-8.4.27.tar.gz as published by php.net (releases JSON; GPG signature checked 2026-10-21).
+# build.yml passes the value that php.net publishes for the resolved version.
+ARG PHP_SHA256=5bafed9994c1a49796b25b5f61c22c9183bfe046b6acc7b363842d03c77f972f
 
 # Security: upgrade pre-installed OS packages before adding our own
 RUN apt-get update && \
@@ -53,6 +57,10 @@ RUN apt-get update && \
 # Download and extract PHP source
 WORKDIR /usr/src
 RUN wget -q "https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz" && \
+    if [ -n "${PHP_SHA256}" ]; then \
+        echo "${PHP_SHA256}  php-${PHP_VERSION}.tar.gz" | sha256sum -c - || \
+        { echo "php-${PHP_VERSION}.tar.gz does not match PHP_SHA256=${PHP_SHA256}" >&2; exit 1; }; \
+    fi && \
     tar -xzf "php-${PHP_VERSION}.tar.gz" && \
     rm "php-${PHP_VERSION}.tar.gz"
 

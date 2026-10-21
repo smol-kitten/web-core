@@ -186,3 +186,35 @@ jobs:
           docker stop smoke-test && docker rm smoke-test
 
           [ "$HTTP_CODE" = "200" ] || { echo "Expected 200, got $HTTP_CODE"; exit 1; }
+
+      # Consumer layout: the app brings its own nginx.conf (no "main" log format) and its own site on
+      # another port, next to the image's default site. The 2026-10-20 image put a default site that
+      # used "access_log ... main" there, so nginx refused to start in that layout (m-schneider.cc down,
+      # 2026-10-21). This starts nginx in that layout and checks both servers answer.
+      - name: Consumer nginx layout test
+        run: |
+          docker rm -f consumer-test >/dev/null 2>&1 || true
+          self=""
+          for c in "$(hostname)" "$(grep -oE '/docker/containers/[0-9a-f]{64}' /proc/self/mountinfo | head -1 | cut -d/ -f4 || true)"; do
+            if [ -n "$c" ] && docker inspect "$c" >/dev/null 2>&1; then self=$c; break; fi
+          done
+          if [ -n "$self" ]; then net=(--network "container:$self"); H=127.0.0.1; P80=80; P3000=3000
+          else net=(-p 127.0.0.1:18080:80 -p 127.0.0.1:13000:3000); H=127.0.0.1; P80=18080; P3000=13000; fi
+          docker create --name consumer-test "${net[@]}" -e QUICK_SET=API -e HEALTH_WORKER=false pr-smoke-test:latest >/dev/null
+          docker cp tests/consumer-nginx/nginx.conf consumer-test:/etc/nginx/nginx.conf
+          docker cp tests/consumer-nginx/site.conf  consumer-test:/etc/nginx/sites-enabled/site.conf
+          docker start consumer-test >/dev/null
+          for i in $(seq 1 30); do
+            A=$(curl -s -o /dev/null -w "%{http_code}" "http://$H:$P80/"   2>/dev/null || true)
+            B=$(curl -s -o /dev/null -w "%{http_code}" "http://$H:$P3000/" 2>/dev/null || true)
+            [ "$A" = "200" ] && [ "$B" = "200" ] && break
+            sleep 1
+          done
+          rc=0
+          docker exec consumer-test nginx -t || rc=1
+          docker exec consumer-test php -v | head -1
+          echo "default site :80 -> HTTP $A, consumer site :3000 -> HTTP $B"
+          [ "$A" = "200" ] && [ "$B" = "200" ] || rc=1
+          docker logs consumer-test 2>&1 | tail -40
+          docker rm -f consumer-test >/dev/null
+          [ "$rc" = 0 ] || { echo "::error::nginx does not start in the consumer layout (own nginx.conf + own site next to the default site)"; exit 1; }
