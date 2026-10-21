@@ -174,8 +174,11 @@ if [ -f "$SITE_CONF" ]; then
             sed -i "/server {/a \    add_header Content-Security-Policy \"${CSP_HEADER}\" always;" "$SITE_CONF"
     fi
 
-    # Rate limiting (opt-in)
-    if [ "$RATE_LIMIT" = "true" ]; then
+    # Rate limiting (opt-in). The zone is defined in the web-core nginx.conf. An app that brings its
+    # own nginx.conf may not define it, and "limit_req zone=req_limit" without the zone stops nginx.
+    if [ "$RATE_LIMIT" = "true" ] && ! grep -qs "zone=req_limit:" "$NGINX_CONF" /etc/nginx/conf.d/*.conf; then
+        echo "WARNING: RATE_LIMIT=true but $NGINX_CONF and conf.d define no limit_req_zone req_limit; rate limiting NOT enabled"
+    elif [ "$RATE_LIMIT" = "true" ]; then
         sed -i "s/# limit_req /limit_req /" "$SITE_CONF"
         sed -i "s/burst=[0-9]*/burst=${RATE_LIMIT_BURST}/" "$SITE_CONF"
     fi

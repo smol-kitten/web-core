@@ -55,6 +55,7 @@ jobs:
     runs-on: self-hosted
     outputs:
       php_version: ${{ steps.php.outputs.version }}
+      php_sha256: ${{ steps.php.outputs.sha256 }}
     steps:
       - name: Fetch latest PHP 8.4.x version
         id: php
@@ -65,10 +66,16 @@ jobs:
           else
             VERSION=$(curl -fsSL 'https://www.php.net/releases/index.php?json&version=8.4' \
               | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null \
-              || echo "8.4.6")
+              || echo "8.4.27")
           fi
-          echo "Resolved PHP version: $VERSION"
+          # sha256 of the tar.gz as php.net publishes it; Dockerfile_prep_base verifies the download
+          # against it. No silent fallback: a version without a published checksum fails here.
+          SHA256=$(curl -fsSL "https://www.php.net/releases/index.php?json&version=${VERSION}" \
+            | python3 -c "import sys,json; print(next(s['sha256'] for s in json.load(sys.stdin)['source'] if s['filename'].endswith('.tar.gz')))") \
+            || { echo "::error::php.net publishes no tar.gz sha256 for PHP ${VERSION}"; exit 1; }
+          echo "Resolved PHP version: $VERSION (tar.gz sha256 $SHA256)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
 
   # ------------------------------------------------------------------
   # Build and push prep_base (PHP compiled from source + all PECL exts)
@@ -114,6 +121,7 @@ jobs:
           build-args: |
             BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
             PHP_VERSION=${{ needs.resolve-php-version.outputs.php_version }}
+            PHP_SHA256=${{ needs.resolve-php-version.outputs.php_sha256 }}
           cache-from: type=local,src=/home/runner/.cache/buildx/prep-base
           cache-to:   type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
@@ -188,6 +196,16 @@ jobs:
             INSTALL_CRON=${{ matrix.cron }}
           cache-from: type=local,src=/home/runner/.cache/buildx/nginx-${{ matrix.version }}
           cache-to:   type=local,dest=/home/runner/.cache/buildx/nginx-${{ matrix.version }},mode=max
+
+      # Check the pushed tag itself: it must run the resolved PHP version and its nginx config must load.
+      - name: Verify pushed image (php -v, nginx -t)
+        run: |
+          IMAGE="${{ steps.meta.outputs.image_tag }}"
+          WANT="${{ needs.resolve-php-version.outputs.php_version }}"
+          GOT=$(docker run --rm --pull always "$IMAGE" php -r 'echo PHP_VERSION;')
+          echo "$IMAGE: PHP $GOT (want $WANT)"
+          [ "$GOT" = "$WANT" ] || { echo "::error::$IMAGE runs PHP $GOT, expected $WANT"; exit 1; }
+          docker run --rm "$IMAGE" nginx -t
 
   # ------------------------------------------------------------------
   # Build static / SPA images (no PHP, all ubuntu versions)
