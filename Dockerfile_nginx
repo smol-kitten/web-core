@@ -55,9 +55,13 @@ RUN apt-get update && \
         $(apt-cache search --names-only '^libgd[0-9]+(t64)?$'   | awk '{print $1}' | head -1 || echo "libgd3") && \
     rm -rf /var/lib/apt/lists/*
 
-# Install nginx
+# Install nginx, plus the tools that app healthchecks call: ss (iproute2), wget, pgrep (procps).
+# netbase ships /etc/services, so ss prints ":http" (several apps grep "LISTEN.+:http").
+# Apps probe with "ss --listening --tcp | grep :3000" or "wget -q -O /dev/null http://127.0.0.1:3000/".
+# The 2026-10-19/20 images had neither, so the containers turned unhealthy and Coolify/Traefik
+# stopped routing (list.catboy.systems 503, 2026-10-21). The PR test "Consumer nginx layout test" runs them.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends nginx && \
+    apt-get install -y --no-install-recommends nginx iproute2 netbase wget procps && \
     rm -rf /var/lib/apt/lists/*
 
 # Install optional runtime libraries
