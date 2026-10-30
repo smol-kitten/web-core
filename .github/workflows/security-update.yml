@@ -31,7 +31,7 @@ jobs:
       # tripped the mari-gate EMERGENCY valve (2026-10-18 09:10-09:36Z, load1 up to 41).
       max-parallel: 2
       matrix:
-        version:   [ "24.04", "25.04", "25.10", "26.04" ]
+        version:   [ "24.04", "25.10", "26.04" ]
         imagick:   [ "true", "false" ]
         redis:     [ "true", "false" ]
         memcached: [ "true", "false" ]
@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [ "24.04", "25.04", "25.10", "26.04" ]
+        version: [ "24.04", "25.10", "26.04" ]
     continue-on-error: ${{ matrix.version == '25.10' || matrix.version == '26.04' }}
     steps:
       - uses: actions/checkout@v7
@@ -159,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [ "24.04", "25.04" ]
+        version: [ "24.04", "26.04" ]
     steps:
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@v0.36.0

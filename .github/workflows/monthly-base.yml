@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [ "24.04", "25.04", "25.10", "26.04" ]
+        version: [ "24.04", "25.10", "26.04" ]
     continue-on-error: ${{ matrix.version == '25.10' || matrix.version == '26.04' }}
     steps:
       - name: Log in to GitHub Container Registry
