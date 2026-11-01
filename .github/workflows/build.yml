@@ -98,6 +98,12 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        # Cap the buildkit container at 2 CPUs. It is a sibling of the runner (via docker.sock), so the
+        # runner's own --cpus limit doesn't reach it; uncapped, make -j$(nproc) took all of n4 (2026-11-01).
+        with:
+          driver-opts: |
+            cpu-quota=200000
+            cpu-period=100000
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -152,6 +158,10 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: |
+            cpu-quota=200000
+            cpu-period=100000
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -223,6 +233,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: |
+            cpu-quota=200000
+            cpu-period=100000
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -253,6 +267,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: |
+            cpu-quota=200000
+            cpu-period=100000
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
