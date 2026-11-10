@@ -1,7 +1,7 @@
 # Full build pipeline:
 # 1. Resolve the latest PHP 8.4.x release from php.net
 # 2. Build and push builder images (prep_base) with compiled PHP + all extensions
-# 3. Build and push all nginx runtime variants
+# 3. Build and push the nginx core image and the variant tags in use (5 per Ubuntu version)
 # 4. Build and push static/SPA and Bun images
 # 5. Scan a sample image with Trivy
 # 6. Clean up untagged container versions
@@ -132,8 +132,12 @@ jobs:
           cache-to:   type=local,dest=/home/runner/.cache/buildx/prep-base,mode=max
 
   # ------------------------------------------------------------------
-  # Build and push all nginx runtime variants (96 configs)
-  # 1 server × 3 Ubuntu versions × 2^5 extension combos = 96
+  # Build and push the nginx core image and the variant tags in use.
+  # "plain" is the core image nginx:<version>: it carries every compiled extension, switched off,
+  # and the webcore-enable command. A consumer adds features in its own Dockerfile
+  # (RUN webcore-enable imagick cron), so a new combination needs no entry here.
+  # The other variants exist only for consumers that still use a pre-made tag; the list is the
+  # tags in use (docs/PLAN-single-core.md). 3 Ubuntu versions × 5 variants = 15 (was 96).
   # ------------------------------------------------------------------
   build-nginx:
     needs: [ resolve-php-version, build-builder ]
@@ -147,11 +151,7 @@ jobs:
       max-parallel: 2
       matrix:
         version:   ${{ fromJSON(inputs.nginx_versions != '' && inputs.nginx_versions || '["24.04","25.10","26.04"]') }}
-        imagick:   [ "true", "false" ]
-        redis:     [ "true", "false" ]
-        memcached: [ "true", "false" ]
-        ssh2:      [ "true", "false" ]
-        cron:      [ "true", "false" ]
+        variant:   [ "plain", "imagick", "cron", "imagick-cron", "redis-memcached-cron" ]
     continue-on-error: ${{ matrix.version == '25.10' || matrix.version == '26.04' }}
     steps:
       - uses: actions/checkout@v7
@@ -173,14 +173,18 @@ jobs:
       - name: Build image tag
         id: meta
         run: |
+          VARIANT="${{ matrix.variant }}"
           TAG=""
-          [ "${{ matrix.imagick }}"   = "true" ] && TAG="${TAG}-imagick"
-          [ "${{ matrix.redis }}"     = "true" ] && TAG="${TAG}-redis"
-          [ "${{ matrix.memcached }}" = "true" ] && TAG="${TAG}-memcached"
-          [ "${{ matrix.ssh2 }}"      = "true" ] && TAG="${TAG}-ssh2"
-          [ "${{ matrix.cron }}"      = "true" ] && TAG="${TAG}-cron"
-          echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}" \
-            >> "$GITHUB_OUTPUT"
+          [ "$VARIANT" != "plain" ] && TAG="-${VARIANT}"
+          flag() { case "-${VARIANT}-" in *"-$1-"*) echo true ;; *) echo false ;; esac; }
+          {
+            echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}"
+            echo "imagick=$(flag imagick)"
+            echo "redis=$(flag redis)"
+            echo "memcached=$(flag memcached)"
+            echo "ssh2=$(flag ssh2)"
+            echo "cron=$(flag cron)"
+          } >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Ensure buildx cache directory
@@ -199,11 +203,11 @@ jobs:
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
             UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
-            INSTALL_IMAGICK=${{ matrix.imagick }}
-            INSTALL_REDIS=${{ matrix.redis }}
-            INSTALL_MEMCACHED=${{ matrix.memcached }}
-            INSTALL_SSH2=${{ matrix.ssh2 }}
-            INSTALL_CRON=${{ matrix.cron }}
+            INSTALL_IMAGICK=${{ steps.meta.outputs.imagick }}
+            INSTALL_REDIS=${{ steps.meta.outputs.redis }}
+            INSTALL_MEMCACHED=${{ steps.meta.outputs.memcached }}
+            INSTALL_SSH2=${{ steps.meta.outputs.ssh2 }}
+            INSTALL_CRON=${{ steps.meta.outputs.cron }}
           cache-from: type=local,src=/home/runner/.cache/buildx/nginx-${{ matrix.version }}
           cache-to:   type=local,dest=/home/runner/.cache/buildx/nginx-${{ matrix.version }},mode=max
 
@@ -218,6 +222,13 @@ jobs:
           docker run --rm "$IMAGE" nginx -t
           # Tools that app healthchecks call (ss / wget / pgrep; /etc/services for "ss ... :http").
           docker run --rm "$IMAGE" sh -c 'for b in ss wget pgrep bash; do command -v $b >/dev/null || { echo "missing: $b"; exit 1; }; done; test -f /etc/services || { echo "missing: /etc/services"; exit 1; }'
+          # The features that are on must be exactly the ones the tag names.
+          LIST=$(docker run --rm "$IMAGE" webcore-enable --list)
+          echo "$LIST"
+          for f in imagick redis memcached ssh2 cron; do
+            case "-${{ matrix.variant }}-" in *"-$f-"*) want=on ;; *) want=off ;; esac
+            grep -qx "$f $want" <<<"$LIST" || { echo "::error::$IMAGE: feature $f is not $want"; exit 1; }
+          done
 
   # ------------------------------------------------------------------
   # Build static / SPA images (no PHP, all ubuntu versions)

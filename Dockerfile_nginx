@@ -2,14 +2,23 @@
 # Pulls compiled PHP from a prep_base builder image and creates a minimal
 # nginx runtime with only the required runtime libraries.
 #
+# With every INSTALL_* argument false this is the core image (nginx:<version>). It carries the
+# compiled imagick, ssh2, redis and memcached extension files but loads none of them. A consumer
+# switches features on in its own Dockerfile:
+#
+#   FROM ghcr.io/smol-kitten/nginx:26.04
+#   RUN webcore-enable imagick cron
+#
+# The INSTALL_* arguments call the same command, for the variant tags that are still published.
+#
 # Build args:
 #   BUILDER_IMAGE      - prep_base image with compiled PHP (required)
 #   UBUNTU_IMAGE       - Ubuntu base image from GHCR mirror (default ghcr.io/smol-kitten/ubuntu-base:24.04)
-#   INSTALL_IMAGICK    - include imagick extension (default true)
-#   INSTALL_SSH2       - include ssh2 extension (default false)
-#   INSTALL_REDIS      - include redis extension (default false)
-#   INSTALL_MEMCACHED  - include memcached extension (default false)
-#   INSTALL_CRON       - include cron daemon (default false)
+#   INSTALL_IMAGICK    - enable the imagick extension (default true)
+#   INSTALL_SSH2       - enable the ssh2 extension (default false)
+#   INSTALL_REDIS      - enable the redis extension (default false)
+#   INSTALL_MEMCACHED  - enable the memcached extension (default false)
+#   INSTALL_CRON       - install the cron daemon (default false)
 
 ARG BUILDER_IMAGE=ghcr.io/smol-kitten/prep_base:24.04
 ARG UBUNTU_IMAGE=ghcr.io/smol-kitten/ubuntu-base:24.04
@@ -64,29 +73,6 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends nginx iproute2 netbase wget procps && \
     rm -rf /var/lib/apt/lists/*
 
-# Install optional runtime libraries
-RUN apt-get update && \
-    if [ "$INSTALL_IMAGICK" = "true" ]; then \
-        apt-get install -y --no-install-recommends imagemagick \
-            $(apt-cache search --names-only '^libmagickwand-[0-9]+-[0-9]+\.q16-[0-9]+(t64)?$' \
-                | awk '{print $1}' | head -1 || echo "libmagickwand-6.q16-6"); \
-    fi && \
-    if [ "$INSTALL_SSH2" = "true" ]; then \
-        apt-get install -y --no-install-recommends \
-            $(apt-cache search --names-only '^libssh2-[0-9]+(t64)?$' \
-                | awk '{print $1}' | head -1 || echo "libssh2-1"); \
-    fi && \
-    if [ "$INSTALL_MEMCACHED" = "true" ]; then \
-        apt-get install -y --no-install-recommends \
-            $(apt-cache search --names-only '^libmemcached[0-9]+(t64)?$' \
-                | awk '{print $1}' | head -1 || echo "libmemcached11"); \
-    fi && \
-    if [ "$INSTALL_CRON" = "true" ]; then \
-        apt-get install -y --no-install-recommends cron; \
-    fi && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 # Copy compiled PHP from builder
 COPY --from=builder /usr/local/php8.4 /usr/local/php8.4
 
@@ -99,24 +85,23 @@ RUN ln -sf /usr/local/php8.4/bin/php        /usr/local/bin/php && \
     ln -sf /usr/local/php8.4/bin/pear       /usr/local/bin/pear && \
     ln -sf /usr/local/php8.4/sbin/php-fpm   /usr/local/bin/php-fpm
 
-# Remove .ini AND .so for disabled extensions (saves image space)
-RUN EXT_DIR=$(php -r 'echo ini_get("extension_dir");') && \
-    if [ "$INSTALL_IMAGICK" != "true" ]; then \
-        rm -f /usr/local/php8.4/etc/conf.d/20-imagick.ini && \
-        rm -f "$EXT_DIR/imagick.so"; \
-    fi && \
-    if [ "$INSTALL_SSH2" != "true" ]; then \
-        rm -f /usr/local/php8.4/etc/conf.d/20-ssh2.ini && \
-        rm -f "$EXT_DIR/ssh2.so"; \
-    fi && \
-    if [ "$INSTALL_REDIS" != "true" ]; then \
-        rm -f /usr/local/php8.4/etc/conf.d/20-redis.ini && \
-        rm -f "$EXT_DIR/redis.so"; \
-    fi && \
-    if [ "$INSTALL_MEMCACHED" != "true" ]; then \
-        rm -f /usr/local/php8.4/etc/conf.d/20-memcached.ini && \
-        rm -f "$EXT_DIR/memcached.so"; \
-    fi
+# Optional features. The extension files (.so) stay in the image, switched off: prep_base ships
+# an .ini per extension, and those are removed here. webcore-enable installs the runtime packages
+# of a feature, writes its .ini and checks that PHP loads it; a consumer runs the same command.
+COPY src/webcore-enable /usr/local/bin/webcore-enable
+COPY src/webcore-apt    /usr/local/bin/webcore-apt
+RUN chmod +x /usr/local/bin/webcore-enable /usr/local/bin/webcore-apt && \
+    rm -f /usr/local/php8.4/etc/conf.d/20-imagick.ini \
+          /usr/local/php8.4/etc/conf.d/20-ssh2.ini \
+          /usr/local/php8.4/etc/conf.d/20-redis.ini \
+          /usr/local/php8.4/etc/conf.d/20-memcached.ini && \
+    FEATURES="" && \
+    if [ "$INSTALL_IMAGICK" = "true" ];   then FEATURES="$FEATURES imagick"; fi && \
+    if [ "$INSTALL_SSH2" = "true" ];      then FEATURES="$FEATURES ssh2"; fi && \
+    if [ "$INSTALL_REDIS" = "true" ];     then FEATURES="$FEATURES redis"; fi && \
+    if [ "$INSTALL_MEMCACHED" = "true" ]; then FEATURES="$FEATURES memcached"; fi && \
+    if [ "$INSTALL_CRON" = "true" ];      then FEATURES="$FEATURES cron"; fi && \
+    if [ -n "$FEATURES" ]; then webcore-enable $FEATURES; fi
 
 # Enable PHP-FPM status page (needed by health worker + telemetry)
 RUN sed -i 's/;pm.status_path = .*/pm.status_path = \/php-fpm-status/' \
