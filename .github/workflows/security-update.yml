@@ -5,6 +5,15 @@
 #
 # Uses ubuntu-base from GHCR (mirrored monthly by monthly-base.yml) so
 # the runtime base layer is always from our own registry, never Docker Hub.
+#
+# nginx: only the variants that fleet repos use are rebuilt daily (5 variants
+# x 3 Ubuntu versions = 15 images). The full set of 96 is rebuilt weekly by
+# build.yml (Sunday). All 96 daily wrote ~340 GiB a day to the runner SSDs
+# (measured 2026-11-10). To get a variant rebuilt daily, add it to `variant`.
+#
+# No build cache here on purpose: a cache hit on the apt layers would make the
+# daily rebuild a no-op. The local cache was exported by every job and never
+# imported (job logs 2026-11-10: no import line, apt layer ran in full).
 
 name: Daily Security Update
 
@@ -31,12 +40,10 @@ jobs:
       # tripped the mari-gate EMERGENCY valve (2026-10-18 09:10-09:36Z, load1 up to 41).
       max-parallel: 2
       matrix:
-        version:   [ "24.04", "25.10", "26.04" ]
-        imagick:   [ "true", "false" ]
-        redis:     [ "true", "false" ]
-        memcached: [ "true", "false" ]
-        ssh2:      [ "true", "false" ]
-        cron:      [ "true", "false" ]
+        version: [ "24.04", "25.10", "26.04" ]
+        # Tag suffix without the leading dash; flag order as in build.yml
+        # (imagick, redis, memcached, ssh2, cron). "plain" = no extension.
+        variant: [ "plain", "imagick", "cron", "imagick-cron", "redis-memcached-cron" ]
     continue-on-error: ${{ matrix.version == '25.10' || matrix.version == '26.04' }}
     steps:
       - uses: actions/checkout@v7
@@ -60,14 +67,18 @@ jobs:
       - name: Build image tag
         id: meta
         run: |
+          VARIANT="${{ matrix.variant }}"
           TAG=""
-          [ "${{ matrix.imagick }}"   = "true" ] && TAG="${TAG}-imagick"
-          [ "${{ matrix.redis }}"     = "true" ] && TAG="${TAG}-redis"
-          [ "${{ matrix.memcached }}" = "true" ] && TAG="${TAG}-memcached"
-          [ "${{ matrix.ssh2 }}"      = "true" ] && TAG="${TAG}-ssh2"
-          [ "${{ matrix.cron }}"      = "true" ] && TAG="${TAG}-cron"
-          echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}" \
-            >> "$GITHUB_OUTPUT"
+          [ "$VARIANT" != "plain" ] && TAG="-${VARIANT}"
+          flag() { case "-${VARIANT}-" in *"-$1-"*) echo true ;; *) echo false ;; esac; }
+          {
+            echo "image_tag=ghcr.io/${{ github.repository_owner }}/nginx:${{ matrix.version }}${TAG}"
+            echo "imagick=$(flag imagick)"
+            echo "redis=$(flag redis)"
+            echo "memcached=$(flag memcached)"
+            echo "ssh2=$(flag ssh2)"
+            echo "cron=$(flag cron)"
+          } >> "$GITHUB_OUTPUT"
         shell: bash
 
       # Skip versions whose prep_base builder has not been published to GHCR
@@ -99,13 +110,11 @@ jobs:
           build-args: |
             BUILDER_IMAGE=ghcr.io/${{ github.repository_owner }}/prep_base:${{ matrix.version }}
             UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
-            INSTALL_IMAGICK=${{ matrix.imagick }}
-            INSTALL_REDIS=${{ matrix.redis }}
-            INSTALL_MEMCACHED=${{ matrix.memcached }}
-            INSTALL_SSH2=${{ matrix.ssh2 }}
-            INSTALL_CRON=${{ matrix.cron }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/nginx-${{ matrix.version }}
-          cache-to:   type=local,dest=/home/runner/.cache/buildx/nginx-${{ matrix.version }},mode=max
+            INSTALL_IMAGICK=${{ steps.meta.outputs.imagick }}
+            INSTALL_REDIS=${{ steps.meta.outputs.redis }}
+            INSTALL_MEMCACHED=${{ steps.meta.outputs.memcached }}
+            INSTALL_SSH2=${{ steps.meta.outputs.ssh2 }}
+            INSTALL_CRON=${{ steps.meta.outputs.cron }}
 
   # Daily rebuild of static/SPA images (OS security patches)
   rebuild-static:
@@ -136,8 +145,6 @@ jobs:
           pull: true
           tags: ghcr.io/${{ github.repository_owner }}/static:${{ matrix.version }}
           build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:${{ matrix.version }}
-          cache-from: type=local,src=/home/runner/.cache/buildx/static-${{ matrix.version }}
-          cache-to:   type=local,dest=/home/runner/.cache/buildx/static-${{ matrix.version }},mode=max
 
   # Daily rebuild of Bun image (OS security patches)
   rebuild-bun:
@@ -163,8 +170,6 @@ jobs:
           pull: true
           tags: ghcr.io/${{ github.repository_owner }}/bun:latest
           build-args: UBUNTU_IMAGE=ghcr.io/${{ github.repository_owner }}/ubuntu-base:24.04
-          cache-from: type=local,src=/home/runner/.cache/buildx/bun
-          cache-to:   type=local,dest=/home/runner/.cache/buildx/bun,mode=max
 
   # Scan after rebuild
   scan-images:
