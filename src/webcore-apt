@@ -1,0 +1,18 @@
+#!/bin/bash
+# webcore-apt: install the consumer's own packages the same way the image does.
+#
+#   RUN webcore-apt ffmpeg poppler-utils
+#
+# Runs apt-get update, installs without recommended packages, then removes the package lists.
+# A package that cannot be installed stops the build.
+
+set -euo pipefail
+
+[ $# -gt 0 ] || { echo "usage: webcore-apt <package>..." >&2; exit 2; }
+[ "$(id -u)" = "0" ] || { echo "webcore-apt: must run as root (put the RUN line before any USER line)" >&2; exit 1; }
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends "$@"
+apt-get clean
+rm -rf /var/lib/apt/lists/*

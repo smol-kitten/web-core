@@ -1,0 +1,5 @@
+# Features of this project image, read by: webcore-enable --file
+imagick
+redis memcached   # more than one name per line is allowed
+ssh2
+cron

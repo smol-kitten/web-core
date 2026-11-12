@@ -3,7 +3,7 @@
 [![Build Docker Images](https://github.com/smol-kitten/web-core/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/smol-kitten/web-core/actions/workflows/build.yml)
 [![PHP Version](https://img.shields.io/badge/PHP-8.4.x-777BB4?logo=php&logoColor=white)](https://www.php.net/)
 [![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
-[![Ubuntu 25.04](https://img.shields.io/badge/Ubuntu-25.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![Ubuntu 26.04](https://img.shields.io/badge/Ubuntu-26.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
 [![License](https://img.shields.io/github/license/smol-kitten/web-core)](LICENSE)
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-packages-blue?logo=docker)](https://github.com/smol-kitten?tab=packages&repo_name=web-core)
 
@@ -11,7 +11,7 @@ Production-ready Docker images for **nginx + PHP 8.4** compiled from source — 
 
 ## Overview
 
-PHP 8.4.x is compiled from source to support Ubuntu 24.04, 25.04, and 25.10 without depending on sury.org or other PPAs. A two-stage build pipeline separates the heavy compile step (builder) from the lean runtime image. The PHP version is auto-resolved from php.net on every build so you always get the latest 8.4.x patch.
+PHP 8.4.x is compiled from source to support Ubuntu 24.04, 25.10 and 26.04 without depending on sury.org or other PPAs. A two-stage build pipeline separates the heavy compile step (builder) from the lean runtime image. The PHP version is auto-resolved from php.net on every build so you always get the latest 8.4.x patch.
 
 Three image types are available: `nginx` (PHP + nginx), `static` (nginx-only SPA server), and `bun` (Bun.js edge runtime).
 
@@ -19,7 +19,8 @@ Three image types are available: `nginx` (PHP + nginx), `static` (nginx-only SPA
 
 - **PHP 8.4.x from source** — latest patch auto-resolved, no PPAs
 - **Two-stage build** — heavy builder image separate from lean runtime
-- **Ubuntu 24.04, 25.04 & 25.10** — dynamic package detection handles t64 transition
+- **Ubuntu 24.04, 25.10 & 26.04** — dynamic package detection handles t64 transition
+- **One core image per Ubuntu version** — the consumer switches imagick, redis, memcached, ssh2 or cron on with one build step (`webcore-enable`)
 - **QUICK_SET presets** — one env var tunes the stack for API / SHOP / STATIC / CMS / AUTO workloads
 - **AUTO resource calculator** — derives optimal FPM workers and memory limits from actual CPU/RAM
 - **Security hardening** — rate limiting, HSTS, CSP, security headers, PHP function blocking, all opt-in
@@ -42,8 +43,8 @@ Docker Hub ──[monthly]──▶ ubuntu-base (GHCR mirror)
                             [daily]──▶  nginx / static / bun  (apt security patches)
 ```
 
-- **Monthly** (`monthly-base.yml`): mirrors `ubuntu:24.04`, `25.04`, `25.10` to `ghcr.io/smol-kitten/ubuntu-base`. This is the only point that touches Docker Hub.
-- **Weekly** (`build.yml`, Sunday 04:00 UTC): compiles PHP from source using the ubuntu-base mirror; builds all runtime variants.
+- **Monthly** (`monthly-base.yml`): mirrors `ubuntu:24.04`, `25.10`, `26.04` to `ghcr.io/smol-kitten/ubuntu-base`. This is the only point that touches Docker Hub.
+- **Weekly** (`build.yml`, Sunday 04:00 UTC): compiles PHP from source using the ubuntu-base mirror; builds the core images and the legacy variant tags.
 - **Daily** (`security-update.yml`, 02:00 UTC): rebuilds runtime images from the GHCR ubuntu-base to apply OS-level apt patches within 24 hours, without re-compiling PHP.
 
 ## Build Pipeline
@@ -53,20 +54,20 @@ Docker Hub ──[monthly]──▶ ubuntu-base (GHCR mirror)
 Compiles PHP 8.4.x from source with all configure flags, installs PEAR/PECL, and compiles all optional extensions (imagick, redis, memcached, ssh2). One builder per Ubuntu version.
 
 ```
-prep_base:24.04   prep_base:25.04   prep_base:25.10
+prep_base:24.04   prep_base:25.10   prep_base:26.04
 ```
 
-### Stage 2 — runtime variants
+### Stage 2 — core runtime image
 
-Copies only the required binaries and libraries from the builder. Extension `.so` files for disabled extensions are removed to keep the image lean. All 96 nginx combinations (3 Ubuntu versions × 2⁵ optional extensions) are built in parallel.
+Copies only the required binaries and libraries from the builder. The result is one **core image** per Ubuntu version:
 
 ```
-nginx:24.04                  nginx:25.04
-nginx:24.04-redis            nginx:25.04-redis
-nginx:24.04-imagick          nginx:25.04-imagick
-nginx:24.04-redis-imagick    nginx:25.04-redis-imagick
-... (all combinations for 24.04, 25.04, 25.10)
+nginx:24.04   nginx:25.10   nginx:26.04
 ```
+
+The core image carries the four compiled optional extensions (imagick, redis, memcached, ssh2; about 1.4 MB together) but loads none of them, and it has none of their runtime packages. The consuming project switches on what it needs with one build step, see [Optional features](#optional-features-webcore-enable).
+
+A few pre-made variant tags (`-imagick`, `-cron`, `-imagick-cron`, `-redis-memcached-cron`) are still built for projects that have not moved yet. They are built with the same `webcore-enable` command and end when their last user has moved. The other combinations of the old 96-image matrix are no longer rebuilt; their tags stay in the registry and get no updates.
 
 ## Image Tags
 
@@ -75,18 +76,18 @@ nginx:24.04-redis-imagick    nginx:25.04-redis-imagick
 | Tag | Ubuntu |
 |-----|--------|
 | `nginx:24.04` | 24.04 LTS |
-| `nginx:25.04` | 25.04 |
 | `nginx:25.10` | 25.10 (experimental) |
+| `nginx:26.04` | 26.04 LTS (experimental) |
 
-Tags are suffixed with any combination of `-imagick`, `-redis`, `-memcached`, `-ssh2`, `-cron`. For example: `nginx:24.04-redis-imagick`.
+These are the core images. Add features with `webcore-enable` in your own Dockerfile. Legacy variant tags that are still rebuilt: `-imagick`, `-cron`, `-imagick-cron`, `-redis-memcached-cron` (per version).
 
 ### Static / SPA
 
 | Tag | Ubuntu |
 |-----|--------|
 | `static:24.04` | 24.04 LTS |
-| `static:25.04` | 25.04 |
 | `static:25.10` | 25.10 (experimental) |
+| `static:26.04` | 26.04 LTS (experimental) |
 
 ### Bun Edge Runtime
 
@@ -106,17 +107,55 @@ Tags are suffixed with any combination of `-imagick`, `-redis`, `-memcached`, `-
 | Web | curl, gd, xml, json |
 | Other | readline, calendar, ctype, exif, fileinfo, ftp, gettext, posix, shmop, sockets, sysvmsg, sysvsem, sysvshm, tokenizer |
 
-## Optional Extension Variants (PECL)
+## Optional features (`webcore-enable`)
 
-| Suffix | Extension | Use Case |
-|--------|-----------|----------|
-| `-imagick` | imagick | Image processing |
-| `-redis` | redis | Redis client |
-| `-memcached` | memcached | Memcached client |
-| `-ssh2` | ssh2 | SSH protocol |
-| `-cron` | cron daemon | Scheduled tasks |
+| Feature | What it adds | Use Case |
+|---------|--------------|----------|
+| `imagick` | imagick extension + ImageMagick | Image processing |
+| `redis` | redis extension | Redis client |
+| `memcached` | memcached extension + libmemcached | Memcached client |
+| `ssh2` | ssh2 extension + libssh2 | SSH protocol |
+| `cron` | cron daemon (started by the entrypoint) | Scheduled tasks |
 
-Any combination is supported: `nginx:24.04-redis-memcached-imagick-cron`
+Switch features on in the Dockerfile of your project, before your own package installs:
+
+```dockerfile
+FROM ghcr.io/smol-kitten/nginx:26.04
+RUN webcore-enable imagick cron
+```
+
+Or keep the list in a file (one or more names per line, `#` starts a comment):
+
+```dockerfile
+FROM ghcr.io/smol-kitten/nginx:26.04
+COPY webcore.features /etc/webcore/features
+RUN webcore-enable --file /etc/webcore/features
+```
+
+- The command installs the runtime packages for the Ubuntu version of the image, writes the `.ini` file and then checks that the feature is on. An unknown feature, a failed install or an extension that does not load stops the build.
+- A feature that is already on is skipped, so the command can run more than once.
+- `webcore-enable --list` prints each feature with `on` or `off`. `/etc/webcore/enabled` records what the command switched on.
+- For your own packages use `RUN webcore-apt <package>...`. It runs `apt-get update`, installs without recommended packages and removes the package lists in one layer.
+- A new PECL extension cannot be compiled in the runtime image (it has no PHP headers). Add it to `Dockerfile_prep_base` and to the feature list in `src/webcore-enable`.
+
+### Intermediate base image (optional)
+
+When the feature and package steps slow down the builds of a project, put them into a small base image of that project and build the app on top of it:
+
+```dockerfile
+# Dockerfile.base  ->  ghcr.io/<org>/<app>-base:26.04
+FROM ghcr.io/smol-kitten/nginx:26.04
+RUN webcore-enable imagick cron
+RUN webcore-apt ffmpeg
+```
+
+```dockerfile
+# Dockerfile
+FROM ghcr.io/<org>/<app>-base:26.04
+COPY ./app /var/www/html
+```
+
+Rebuild the base image when `Dockerfile.base` changes and on a schedule (weekly), so that it picks up the security rebuilds of the core image. The app build then needs no package archive.
 
 ## Build Arguments
 
@@ -133,11 +172,13 @@ Any combination is supported: `nginx:24.04-redis-memcached-imagick-cron`
 |----------|---------|-------------|
 | `BUILDER_IMAGE` | `ghcr.io/smol-kitten/prep_base:24.04` | Builder image with compiled PHP |
 | `UBUNTU_IMAGE` | `ghcr.io/smol-kitten/ubuntu-base:24.04` | Ubuntu base image from GHCR mirror |
-| `INSTALL_IMAGICK` | `true` | Include imagick |
-| `INSTALL_REDIS` | `false` | Include Redis |
-| `INSTALL_MEMCACHED` | `false` | Include Memcached |
-| `INSTALL_SSH2` | `false` | Include SSH2 |
-| `INSTALL_CRON` | `false` | Include cron daemon |
+| `INSTALL_IMAGICK` | `true` | Run `webcore-enable imagick` in the image |
+| `INSTALL_REDIS` | `false` | Run `webcore-enable redis` |
+| `INSTALL_MEMCACHED` | `false` | Run `webcore-enable memcached` |
+| `INSTALL_SSH2` | `false` | Run `webcore-enable ssh2` |
+| `INSTALL_CRON` | `false` | Run `webcore-enable cron` |
+
+The published core image is built with all five set to `false`. The arguments exist for the legacy variant tags.
 
 ### Dockerfile_static / Dockerfile_bun
 
@@ -488,7 +529,11 @@ services:
 ### Using as a Base Image
 
 ```dockerfile
-FROM ghcr.io/smol-kitten/nginx:24.04-imagick
+FROM ghcr.io/smol-kitten/nginx:24.04
+
+# Optional: features of the core image, then your own packages
+RUN webcore-enable imagick
+RUN webcore-apt ffmpeg
 
 COPY ./app /var/www/html
 
@@ -508,7 +553,7 @@ The nginx image executes `/docker-entrypoint-custom.sh` (if it exists) after env
 #!/bin/bash
 # /docker-entrypoint-custom.sh
 
-# Install extra packages
+# Install extra packages (better: RUN webcore-apt vim in your Dockerfile, at build time)
 apt-get update && apt-get install -y --no-install-recommends vim
 
 # Extra PHP INI settings
@@ -521,10 +566,11 @@ chown www-data:www-data /var/www/html/cache
 
 ### Cron Jobs
 
-Images built with `-cron` include the cron daemon, started automatically after the web server.
+Images with the `cron` feature include the cron daemon, started automatically after the web server.
 
 ```dockerfile
-FROM ghcr.io/smol-kitten/nginx:24.04-cron
+FROM ghcr.io/smol-kitten/nginx:24.04
+RUN webcore-enable cron
 
 COPY ./app /var/www/html
 
@@ -535,7 +581,7 @@ RUN echo "*/5 * * * * www-data /usr/local/bin/php /var/www/html/cron.php >> /var
 
 Or mount a crontab file:
 ```sh
-docker run -v ./my-crontab:/etc/cron.d/app:ro ghcr.io/smol-kitten/nginx:24.04-cron
+docker run -v ./my-crontab:/etc/cron.d/app:ro my-app-image   # an image with the cron feature
 ```
 
 ## Internal Monitoring Endpoints
@@ -568,7 +614,7 @@ These endpoints are accessible only from loopback (`127.0.0.1`) inside the conta
 
 Triggers: 1st of each month 03:00 UTC, manual dispatch.
 
-Mirrors `ubuntu:24.04`, `25.04`, `25.10` from Docker Hub to `ghcr.io/smol-kitten/ubuntu-base`. This is the only workflow that ever contacts Docker Hub — all other builds use the GHCR mirror.
+Mirrors `ubuntu:24.04`, `25.10`, `26.04` from Docker Hub to `ghcr.io/smol-kitten/ubuntu-base`. This is the only workflow that ever contacts Docker Hub — all other builds use the GHCR mirror.
 
 ### `build.yml` — Full Build Pipeline
 
@@ -576,7 +622,7 @@ Triggers: push to `main`, weekly Sunday 04:00 UTC, manual dispatch.
 
 1. **resolve-php-version** — fetches latest PHP 8.4.x from php.net API (override via `php_version_override` input)
 2. **build-builder** — builds `prep_base` images (3 Ubuntu versions, `max-parallel: 3`)
-3. **build-nginx** — builds all 96 nginx runtime variants (`max-parallel: 20`)
+3. **build-nginx** — builds the nginx core image and the 4 legacy variants per Ubuntu version (15 images, `max-parallel: 2`)
 4. **build-static** — builds static/SPA images (3 Ubuntu versions)
 5. **build-bun** — builds the Bun edge runtime image
 6. **scan-images** — runs Trivy vulnerability scan on sample images
@@ -597,6 +643,7 @@ Jobs:
 - **check-prep-base** — probes registry to see if a builder image exists
 - **test-build-nginx** — test-builds the nginx image (skipped if builder not available)
 - **smoke-test** — starts a container, verifies HTTP 200 from nginx
+- **test-webcore-enable** — builds the core image and a consumer image on top of it that switches every feature on (`tests/consumer-enable/check.sh`)
 
 ### Dependabot
 
@@ -610,6 +657,8 @@ Jobs:
 | `Dockerfile_nginx` | Assembles nginx runtime image from builder |
 | `Dockerfile_static` | Lightweight nginx image for SPA/static sites (no PHP) |
 | `Dockerfile_bun` | Bun.js edge runtime image |
+| `src/webcore-enable` | Switches optional features on at image build time |
+| `src/webcore-apt` | Uniform package install for consumer Dockerfiles |
 | `src/entrypoint-common.sh` | Shared functions sourced by entrypoints |
 | `src/docker-entrypoint-nginx.sh` | nginx entrypoint |
 | `src/docker-entrypoint-static.sh` | Static server entrypoint |

@@ -1,0 +1,140 @@
+#!/bin/bash
+# webcore-enable: switch optional features of the web-core image on, at image build time.
+#
+#   FROM ghcr.io/smol-kitten/nginx:26.04
+#   RUN webcore-enable imagick cron
+#
+# Usage:
+#   webcore-enable <feature>...        enable the named features
+#   webcore-enable --file <path>       read feature names from a file (one or more per line, # comments)
+#   webcore-enable --list              print every feature and whether it is on
+#
+# Features: imagick, redis, memcached, ssh2 (PHP extensions, compiled in the image but not loaded)
+#           cron (cron daemon; the entrypoint starts it when it is installed)
+#
+# The image carries the compiled extension files. This command installs the runtime packages an
+# extension needs, writes its .ini file and then checks that PHP loads it. Any failure stops the
+# build: an unknown feature, a failed package install, or an extension that does not load.
+# A feature that is already on is skipped, so the command can run more than once.
+
+set -euo pipefail
+
+PHP_PREFIX=/usr/local/php8.4
+CONF_D="$PHP_PREFIX/etc/conf.d"
+STATE_FILE=/etc/webcore/enabled
+EXTENSIONS="imagick redis memcached ssh2"
+FEATURES="$EXTENSIONS cron"
+
+die() { echo "webcore-enable: $*" >&2; exit 1; }
+
+usage() {
+    echo "usage: webcore-enable <feature>... | --file <path> | --list" >&2
+    echo "features: $FEATURES" >&2
+    exit 2
+}
+
+is_extension() { case " $EXTENSIONS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+is_feature()   { case " $FEATURES "   in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+# Loaded PHP modules, lower case, one per line. A startup warning (an extension that fails to
+# load) is an error here, not noise.
+php_modules() {
+    local out
+    out=$(php -m 2>&1) || die "php -m failed: $out"
+    if grep -qi 'warning' <<<"$out"; then
+        die "PHP reports a startup warning: $(grep -i 'warning' <<<"$out" | head -3)"
+    fi
+    tr '[:upper:]' '[:lower:]' <<<"$out"
+}
+
+is_on() {
+    if [ "$1" = "cron" ]; then
+        command -v cron >/dev/null 2>&1
+    else
+        local mods
+        [ -f "$CONF_D/20-$1.ini" ] || return 1
+        mods=$(php_modules) || return 1
+        grep -qx "$1" <<<"$mods"
+    fi
+}
+
+# First package whose name matches the pattern. Package names differ between Ubuntu versions
+# (libssh2-1 / libssh2-1t64), so they are looked up, not written down.
+find_pkg() { apt-cache search --names-only "$1" | awk 'NR==1 {print $1}'; }
+
+packages_for() {
+    case "$1" in
+        imagick)   echo "imagemagick $(find_pkg '^libmagickwand-[0-9]+\.q16-[0-9]+(t64)?$')" ;;
+        memcached) find_pkg '^libmemcached[0-9]+(t64)?$' ;;
+        ssh2)      find_pkg '^libssh2-[0-9]+(t64)?$' ;;
+        cron)      echo "cron" ;;
+        redis)     ;;
+    esac
+}
+
+list_features() {
+    local f
+    for f in $FEATURES; do
+        if is_on "$f"; then echo "$f on"; else echo "$f off"; fi
+    done
+}
+
+# ---- arguments --------------------------------------------------------------
+[ $# -gt 0 ] || usage
+wanted=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --list) list_features; exit 0 ;;
+        --file)
+            [ $# -ge 2 ] || usage
+            [ -r "$2" ] || die "cannot read feature file $2"
+            wanted="$wanted $(sed 's/#.*//' "$2" | tr '\n' ' ')"
+            shift 2 ;;
+        -h|--help) usage ;;
+        -*) echo "webcore-enable: unknown option $1" >&2; usage ;;
+        *) wanted="$wanted $1"; shift ;;
+    esac
+done
+
+todo=""
+for f in $wanted; do
+    is_feature "$f" || die "unknown feature '$f' (features: $FEATURES)"
+    case " $todo " in *" $f "*) continue ;; esac
+    if is_on "$f"; then echo "webcore-enable: $f is already on"; continue; fi
+    todo="$todo $f"
+done
+todo="${todo# }"
+[ -n "$todo" ] || { echo "webcore-enable: nothing to do"; exit 0; }
+[ "$(id -u)" = "0" ] || die "must run as root (put the RUN line before any USER line)"
+
+ext_dir=$(php -r 'echo ini_get("extension_dir");')
+for f in $todo; do
+    if is_extension "$f" && [ ! -f "$ext_dir/$f.so" ]; then
+        die "this image has no $f.so in $ext_dir; the extension must be compiled in prep_base first"
+    fi
+done
+
+# ---- packages ---------------------------------------------------------------
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+pkgs=""
+for f in $todo; do pkgs="$pkgs $(packages_for "$f")"; done
+# shellcheck disable=SC2086  # word splitting wanted: one argument per package
+set -- $pkgs
+if [ $# -gt 0 ]; then
+    echo "webcore-enable: installing $*"
+    apt-get install -y --no-install-recommends "$@"
+fi
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+
+# ---- switch on and check ----------------------------------------------------
+for f in $todo; do
+    if is_extension "$f"; then echo "extension=$f.so" > "$CONF_D/20-$f.ini"; fi
+done
+mkdir -p "$(dirname "$STATE_FILE")"
+for f in $todo; do
+    is_on "$f" || die "$f was set up but is not on (see the PHP warning or the package list above)"
+    grep -qxs "$f" "$STATE_FILE" || echo "$f" >> "$STATE_FILE"
+done
+echo "webcore-enable: on: $todo"
