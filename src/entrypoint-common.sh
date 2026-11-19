@@ -74,8 +74,14 @@ configure_security_php() {
 # Misc helpers
 # -----------------------------------------------------------------------
 set_timezone() {
-    ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime
-    echo "$TZ" > /etc/timezone
+    # A compose file may bind-mount /etc/localtime (and /etc/timezone) from the host.
+    # Then ln fails with "Already exists": keep the host's file instead of aborting start-up.
+    if ! ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime 2>/dev/null; then
+        echo "set_timezone: cannot replace /etc/localtime (bind-mounted?), keeping it" >&2
+    fi
+    if ! echo "$TZ" > /etc/timezone 2>/dev/null; then
+        echo "set_timezone: cannot write /etc/timezone (bind-mounted?), keeping it" >&2
+    fi
 }
 
 run_custom_hook() {
